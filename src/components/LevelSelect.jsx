@@ -3,70 +3,97 @@ import { Lock, Star, ChevronLeft } from 'lucide-react';
 
 const LevelSelect = ({ onSelectLevel, onBack, unlockedStage = 5 }) => {
     const levels = [
-        { id: 1, name: 'Flat Desert', difficulty: 'Easy', color: 'from-orange-400 to-yellow-600' },
-        { id: 2, name: 'Hill Climb', difficulty: 'Medium', color: 'from-green-500 to-emerald-700' },
-        { id: 3, name: 'Canyon Jump', difficulty: 'Hard', color: 'from-red-500 to-orange-700' },
-        { id: 4, name: 'Obstacle Course', difficulty: 'Very Hard', color: 'from-purple-500 to-indigo-700' },
-        { id: 5, name: 'Extreme', difficulty: 'Insane', color: 'from-pink-500 to-rose-700' },
+        { id: 1, name: 'Frozen Tundra', difficulty: 'Easy', color: 'from-orange-400 to-yellow-600', shadow: 'shadow-orange-500/20' },
+        { id: 2, name: 'Glacial Caverns', difficulty: 'Medium', color: 'from-green-500 to-emerald-700', shadow: 'shadow-emerald-500/20' },
+        { id: 3, name: 'Snowy Peak', difficulty: 'Hard', color: 'from-red-500 to-orange-700', shadow: 'shadow-red-500/20' },
+        { id: 4, name: 'Ice Ridge', difficulty: 'Very Hard', color: 'from-purple-500 to-indigo-700', shadow: 'shadow-indigo-500/20' },
+        { id: 5, name: 'Blizzard Run', difficulty: 'Insane', color: 'from-pink-500 to-rose-700', shadow: 'shadow-rose-500/20' },
     ];
 
     return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center z-50 bg-gray-900 text-white p-8">
-            <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1558591710-4b4a1ae0f04d?q=80&w=2574&auto=format&fit=crop')] bg-cover bg-center opacity-20 blur-sm"></div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-50 overflow-hidden bg-black font-sans">
+            {/* Background Image - Same as Main Menu */}
+            <div className="absolute inset-0 z-0">
+                <img
+                    src="/snow_bg.jpg"
+                    alt="Ice Mountains"
+                    className="w-full h-full object-cover opacity-60"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/70"></div>
+                <div className="absolute inset-0 backdrop-blur-[2px]"></div>
+            </div>
 
-            <div className="relative z-10 w-full max-w-4xl">
+            <div className="relative z-10 w-full max-w-6xl px-8 h-full flex flex-col py-12">
                 <button
                     onClick={onBack}
-                    className="mb-8 flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+                    className="group mb-8 flex items-center gap-2 text-cyan-200/60 hover:text-cyan-300 transition-all w-fit px-4 py-2 rounded-full hover:bg-white/5 border border-transparent hover:border-white/10"
                 >
-                    <ChevronLeft className="w-6 h-6" /> Back to Menu
+                    <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+                    <span className="tracking-widest text-sm font-bold">BACK TO MENU</span>
                 </button>
 
-                <h2 className="text-4xl font-bold mb-8 text-center bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
-                    SELECT STAGE
-                </h2>
+                <div className="text-center mb-12 relative">
+                    <h2 className="text-6xl md:text-7xl font-[900] text-transparent bg-clip-text bg-gradient-to-b from-white to-cyan-300 drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] tracking-tighter italic scale-y-110"
+                        style={{ fontFamily: "'Outfit', sans-serif" }}>
+                        SELECT STAGE
+                    </h2>
+                    <div className="h-1 w-32 bg-gradient-to-r from-transparent via-cyan-400 to-transparent mx-auto mt-4 rounded-full shadow-[0_0_10px_cyan]"></div>
+                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {levels.map((level) => {
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 flex-1 items-center pb-12">
+                    {levels.map((level, index) => {
                         const isLocked = level.id > unlockedStage;
                         return (
                             <button
                                 key={level.id}
                                 onClick={() => !isLocked && onSelectLevel(level.id)}
                                 disabled={isLocked}
-                                className={`group relative overflow-hidden rounded-2xl p-1 transition-all transform hover:scale-105 ${isLocked ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-2xl hover:shadow-blue-500/20'}`}
+                                className={`group relative flex flex-col items-center p-6 rounded-[2em] transition-all duration-500 transform hover:scale-105 active:scale-95 animate-fade-in-up h-72 w-full
+                                    ${isLocked ? 'opacity-40 grayscale cursor-not-allowed' : 'hover:shadow-[0_0_40px_rgba(0,150,255,0.3)]'}
+                                    bg-gradient-to-b from-white/10 to-white/5 backdrop-blur-xl border border-white/10 ring-1 ring-white/20`}
+                                style={{ animationDelay: `${index * 0.1}s` }}
                             >
-                                <div className={`absolute inset-0 bg-gradient-to-br ${level.color} opacity-20 group-hover:opacity-30 transition-opacity`}></div>
-                                <div className="bg-gray-800/90 backdrop-blur-xl relative h-full p-6 rounded-xl border border-white/10 flex flex-col items-center gap-4">
+                                {/* Glow Effect on Hover */}
+                                {!isLocked && (
+                                    <div className={`absolute inset-0 rounded-[2em] bg-gradient-to-br ${level.color} opacity-0 group-hover:opacity-10 transition-opacity blur-xl`}></div>
+                                )}
 
+                                {/* Level Number Icon */}
+                                <div className="relative mb-6">
                                     {isLocked ? (
-                                        <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center">
+                                        <div className="w-20 h-20 rounded-2xl bg-black/40 flex items-center justify-center border border-white/5">
                                             <Lock className="w-8 h-8 text-gray-500" />
                                         </div>
                                     ) : (
-                                        <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${level.color} flex items-center justify-center shadow-lg`}>
-                                            <span className="text-2xl font-bold text-white">{level.id}</span>
+                                        <div className={`w-20 h-20 rounded-2xl bg-gradient-to-tr ${level.color} flex items-center justify-center shadow-lg transform group-hover:rotate-6 transition-transform duration-500`}>
+                                            <span className="text-3xl font-black text-white drop-shadow-md">{level.id}</span>
                                         </div>
                                     )}
-
-                                    <div className="text-center">
-                                        <h3 className="text-xl font-bold text-white mb-1 group-hover:text-blue-300 transition-colors">{level.name}</h3>
-                                        <span className={`text-xs px-2 py-1 rounded-full border border-white/10 ${isLocked ? 'text-gray-500' : 'text-gray-300'}`}>
-                                            {level.difficulty}
-                                        </span>
-                                    </div>
-
-                                    {!isLocked && (
-                                        <div className="flex gap-1 mt-2">
-                                            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                                            <Star className="w-4 h-4 text-yellow-500/30" />
-                                            <Star className="w-4 h-4 text-yellow-500/30" />
-                                        </div>
-                                    )}
+                                    {/* Reflection line */}
+                                    <div className="absolute top-0 left-0 right-0 h-[1px] bg-white/30 rounded-full"></div>
                                 </div>
+
+                                <div className="text-center w-full">
+                                    <h3 className="text-xl font-bold text-white mb-2 tracking-tight group-hover:text-cyan-300 transition-colors">
+                                        {level.name.toUpperCase()}
+                                    </h3>
+                                    <div className="inline-block px-3 py-1 rounded-full bg-black/30 border border-white/5 text-[10px] font-bold tracking-[0.2em] text-cyan-200/60 mb-1">
+                                        {level.difficulty}
+                                    </div>
+                                </div>
+
+                                {/* Bottom highlight */}
+                                <div className={`absolute bottom-0 left-1/4 right-1/4 h-[2px] bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity`}></div>
                             </button>
                         )
                     })}
+                </div>
+
+                {/* Footer Section */}
+                <div className="mt-auto text-center py-4">
+                    <p className="text-[10px] text-cyan-200/20 font-mono tracking-[0.5em]">
+                        SELECT CARTRIDGE TO BOOT LEVEL
+                    </p>
                 </div>
             </div>
         </div>

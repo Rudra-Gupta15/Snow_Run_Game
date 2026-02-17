@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, Star, MapPin, Gauge, Flag } from 'lucide-react';
+import { Clock, MapPin, Gauge, Flag } from 'lucide-react';
 
 const HUD = ({ time, stage, stageName, speed, progress, totalDistance }) => {
     const isTimeLow = time < 30;

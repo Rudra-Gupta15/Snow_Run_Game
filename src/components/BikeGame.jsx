@@ -34,7 +34,7 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
     const prevJumpState = useRef(false); // Tracks previous key state to detect rising edge
 
     const [bikes, setBikes] = useState([
-        { id: 1, x: 200, y: 200, rotation: 0, velocityX: 0, velocityY: 0, wheelRotation: 0, crashed: false, jumpCount: 0 }
+        { id: 1, x: 200, y: 200, rotation: 0, velocityX: 0, velocityY: 0, wheelRotation: 0, crashed: false, jumpCount: 0, flightTimer: 0 }
     ]);
 
     const [obstacles, setObstacles] = useState([]);
@@ -56,7 +56,7 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
 
     // Speed configs
     const BASE_MAX_SPEED = 18;
-    const BOOST_MAX_SPEED = BASE_MAX_SPEED * 1.7; // 1.7x speed
+    const BOOST_MAX_SPEED = BASE_MAX_SPEED * 2.5; // 2.5x boost
     const ACCELERATION = 0.6; // Smoother acceleration
 
     // Stage configurations (Solstice Spark Theme)
@@ -148,7 +148,7 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
         // Start bike higher for Level 3 if ground is lower, or let gravity handle it?
         // Let's spawn it lower for L3 to match ground
         const startY = stage === 3 ? 600 : 400;
-        setBikes([{ id: 1, x: 200, y: startY, rotation: 0, velocityX: 0, velocityY: 0, wheelRotation: 0, crashed: false, jumpCount: 0 }]);
+        setBikes([{ id: 1, x: 200, y: startY, rotation: 0, velocityX: 0, velocityY: 0, wheelRotation: 0, crashed: false, jumpCount: 0, flightTimer: 0 }]);
         setEnemies([]);
         setProjectiles([]);
         // Initialize boss as inactive, will wake up when player gets close
@@ -405,7 +405,15 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                         newBike.velocityY = -12; // Slightly weaker second jump
                         newBike.jumpCount = 2;
                         newBike.velocityX += 2; // Slight forward boost
-                        createExplosion(newBike.x, newBike.y + 10, 'gold'); // Different effect
+
+                        // Check for Flight Mechanic
+                        if (keysPressed.current['e']) {
+                            newBike.flightTimer = 66; // approx 2 seconds at 30fps (66/33 = 2s)
+                            newBike.velocityY = 0; // Immediate stabilization
+                            createExplosion(newBike.x, newBike.y, 'gold');
+                        } else {
+                            createExplosion(newBike.x, newBike.y + 10, 'gold'); // Different effect
+                        }
                     }
                 } else if (jumpKey && isGrounded && Math.abs(newBike.velocityY) < 2) {
                     // Fallback for holding jump on ground (bunny hop)
@@ -417,6 +425,14 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
 
                 // Physics
                 let gravityMod = isCarryingCore ? 1.2 : 1.0;
+
+                // Handle Flight Timer
+                if (newBike.flightTimer > 0) {
+                    newBike.flightTimer--;
+                    gravityMod = 0; // Zero gravity during flight
+                    newBike.velocityY *= 0.8; // Dampen existing vertical velocity
+                    if (Math.random() > 0.3) createParticle(newBike.x - 20, newBike.y, '#22D3EE'); // Cyan trail
+                }
 
                 // Standard Bike Physics
                 const currentFriction = stage === 2 ? 0.99 : FRICTION;

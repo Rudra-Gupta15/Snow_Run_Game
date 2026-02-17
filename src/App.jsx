@@ -96,6 +96,16 @@ function App() {
           onCancel={() => setShowQuitConfirm(false)}
         />
       )}
+
+      {/* Global Footer */}
+      <div className="absolute bottom-4 left-6 z-[60] pointer-events-none">
+        <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-6 py-2 rounded-full border border-white/10 shadow-[0_4px_15px_rgba(0,0,0,0.3)]">
+          <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_cyan]"></div>
+          <span className="text-[10px] font-bold text-cyan-100/60 uppercase tracking-[0.3em] whitespace-nowrap">
+            Built by <span className="text-white">Rudra_Kumar_Gupta</span>
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
