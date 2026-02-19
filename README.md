@@ -16,7 +16,7 @@
 
 ## 🎮 Play Now
 
-> **[🌐 https://snow-run-game.vercel.app/](https://snow-run-game.vercel.app/)**
+> **[![Play](https://img.shields.io/badge/▶_Play-ffffff?style=for-the-badge&labelColor=000000&logoColor=black)](https://snow-run-game.vercel.app/)**
 
 ---
 
