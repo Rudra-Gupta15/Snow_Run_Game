@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Smartphone } from 'lucide-react';
 import MainMenu from './components/MainMenu';
 import LevelSelect from './components/LevelSelect';
 import BikeGame from './components/BikeGame';
@@ -98,13 +99,25 @@ function App() {
       )}
 
       {/* Global Footer */}
-      <div className="absolute bottom-4 left-6 z-[60] pointer-events-none">
+      <div className="absolute bottom-4 left-6 z-[60] pointer-events-none md:block hidden">
         <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-6 py-2 rounded-full border border-white/10 shadow-[0_4px_15px_rgba(0,0,0,0.3)]">
           <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_cyan]"></div>
           <span className="text-[10px] font-bold text-cyan-100/60 uppercase tracking-[0.3em] whitespace-nowrap">
             Built by <span className="text-white">Rudra_Kumar_Gupta</span>
           </span>
         </div>
+      </div>
+
+      {/* Orientation Overlay */}
+      <div className="orientation-overlay">
+        <div className="bg-blue-600/20 p-8 rounded-full mb-6 relative">
+          <div className="absolute inset-0 bg-blue-500 rounded-full animate-ping opacity-20"></div>
+          <Smartphone className="w-16 h-16 text-cyan-400 relative z-10" />
+        </div>
+        <h2 className="text-3xl font-[900] text-white mb-2 tracking-tighter" style={{ fontFamily: "'Outfit', sans-serif" }}>
+          LANDSCAPE REQUIRED
+        </h2>
+        <p className="text-cyan-200/60 font-medium">Please rotate your device to play</p>
       </div>
     </div>
   );

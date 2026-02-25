@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import HUD from './HUD';
 import GameOverOverlay from './GameOverOverlay';
 import LevelCompleteOverlay from './LevelCompleteOverlay';
+import MobileControls from './MobileControls';
 import { RotateCcw, ChevronRight, Home } from 'lucide-react';
 
 export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, globalTime, setGlobalTime }) {
@@ -47,6 +48,7 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
     const [cameraOffset, setCameraOffset] = useState(0);
 
     const keysPressed = useRef({});
+    const touchInputs = useRef({ move: 0, jump: false, boost: false });
     const gameLoopRef = useRef(null);
 
     // Physics Constants
@@ -362,13 +364,13 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                 // Level 4: Enemy (Visual Only Here)
 
                 // Boost (E key)
-                if (keysPressed.current['e']) {
+                if (keysPressed.current['e'] || touchInputs.current.boost) {
                     currentMaxSpeed = BOOST_MAX_SPEED;
                     if (Math.random() > 0.5) createParticle(newBike.x - 20, newBike.y, '#00FFFF');
                 }
 
                 // Forward (D)
-                if (keysPressed.current['d'] || keysPressed.current['arrowright']) {
+                if (keysPressed.current['d'] || keysPressed.current['arrowright'] || touchInputs.current.move > 0.3) {
                     // Level 5 Logic: Rocket Thrust handled later
                     const accelMod = isCarryingCore ? 0.8 : 1.0;
                     newBike.velocityX = Math.min(newBike.velocityX + (ACCELERATION * accelMod), currentMaxSpeed);
@@ -376,19 +378,19 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                 }
 
                 // Backward/Brake (A)
-                if (keysPressed.current['a']) {
+                if (keysPressed.current['a'] || touchInputs.current.move < -0.3) {
                     newBike.velocityX = Math.max(newBike.velocityX - ACCELERATION * 1.5, -BASE_MAX_SPEED * 0.5);
                 }
 
-                if (keysPressed.current['arrowleft']) {
+                if (keysPressed.current['arrowleft'] || touchInputs.current.move < -0.6) {
                     newBike.rotation = Math.max(newBike.rotation - 0.15, -0.8);
                 }
-                if (keysPressed.current['arrowright']) {
+                if (keysPressed.current['arrowright'] || touchInputs.current.move > 0.6) {
                     newBike.rotation = Math.min(newBike.rotation + 0.15, 0.8);
                 }
 
                 // Jump Logic (Double Jump)
-                const jumpKey = keysPressed.current[' '] || keysPressed.current['w'] || keysPressed.current['arrowup'];
+                const jumpKey = keysPressed.current[' '] || keysPressed.current['w'] || keysPressed.current['arrowup'] || touchInputs.current.jump;
 
                 const isGrounded = newBike.y >= groundY - WHEEL_RADIUS - 5;
 
@@ -407,7 +409,7 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                         newBike.velocityX += 2; // Slight forward boost
 
                         // Check for Flight Mechanic
-                        if (keysPressed.current['e']) {
+                        if (keysPressed.current['e'] || touchInputs.current.boost) {
                             newBike.flightTimer = 66; // approx 2 seconds at 30fps (66/33 = 2s)
                             newBike.velocityY = 0; // Immediate stabilization
                             createExplosion(newBike.x, newBike.y, 'gold');
@@ -1151,6 +1153,17 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                     time={Math.ceil(600 - globalTime)}
                 />
             )}
+
+            <MobileControls
+                onAction={(type, value) => {
+                    if (type === 'move') touchInputs.current.move = value;
+                    if (type === 'jump') {
+                        if (value && !touchInputs.current.jump) jumpPressed.current = true;
+                        touchInputs.current.jump = value;
+                    }
+                    if (type === 'boost') touchInputs.current.boost = value;
+                }}
+            />
         </div>
     );
 }
