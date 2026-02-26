@@ -5,12 +5,31 @@
 
 let audioCtx = null;
 
-function getCtx() {
-    if (!audioCtx) {
+/** Pre-warm AudioContext on first user gesture (pointerdown fires before click) */
+function initAudio() {
+    if (audioCtx) return;
+    try {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    // Resume suspended context (browser autoplay policy)
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+        // Play a 0-volume silent buffer to fully initialise the pipeline
+        const buf = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(audioCtx.destination);
+        src.start(0);
+    } catch (e) { /* unsupported browser */ }
+}
+
+// Register once — removed after first user touch/click so it doesn't linger
+const _warmEvents = ['pointerdown', 'touchstart', 'keydown'];
+const _warmHandler = () => {
+    initAudio();
+    _warmEvents.forEach(ev => window.removeEventListener(ev, _warmHandler));
+};
+_warmEvents.forEach(ev => window.addEventListener(ev, _warmHandler, { once: false, passive: true }));
+
+function getCtx() {
+    if (!audioCtx) initAudio(); // fallback if gesture wasn't detected
+    if (audioCtx?.state === 'suspended') audioCtx.resume();
     return audioCtx;
 }
 

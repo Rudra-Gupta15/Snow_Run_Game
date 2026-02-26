@@ -51,7 +51,7 @@ body {
 }
 
 @media (orientation: portrait) and (max-width: 1024px) {
-    .orientation-overlay {
+    .game-active .orientation-overlay {
         display: flex;
     }
 }

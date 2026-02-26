@@ -4,7 +4,7 @@ import SFX from '../utils/soundManager';
 
 const MainMenu = ({ onStart, onLevelSelect, onSettings, onQuit }) => {
     return (
-        <div className="absolute inset-0 z-50 overflow-hidden font-sans flex flex-col">
+        <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden font-sans flex flex-col">
 
             {/* ── Background ── */}
             <div className="absolute inset-0 z-0">

@@ -53,7 +53,7 @@ function App() {
   };
 
   return (
-    <div className="w-screen h-screen overflow-hidden bg-black font-sans select-none relative">
+    <div className={`w-screen h-screen overflow-hidden font-sans select-none relative ${appState === 'game' ? 'game-active' : ''}`}>
       {appState === 'menu' && (
         <MainMenu
           onStart={handleStartGame}
