@@ -10,8 +10,9 @@ import SFX from '../utils/soundManager';
 const GAME_WIDTH = 1280;
 const GAME_HEIGHT = 720;
 
-// Hook: scale game canvas to CONTAIN within screen (no clipping, no black bars trick)
-// Uses Math.min so game fully fits — outer wrapper uses matching sky gradient to hide bars.
+// PERMANENT FIX: Math.min (contain) — game content never clips.
+// Letterbox areas are invisible because the game's own `fixed inset-0`
+// sky backgrounds naturally fill ANY space outside the game canvas.
 function useScaleToFit() {
     const [scale, setScale] = useState(1);
 
@@ -19,7 +20,6 @@ function useScaleToFit() {
         const compute = () => {
             const scaleX = window.innerWidth / GAME_WIDTH;
             const scaleY = window.innerHeight / GAME_HEIGHT;
-            // CONTAIN: never clip any content — outer wrapper bg matches game sky
             setScale(Math.min(scaleX, scaleY));
         };
         compute();
@@ -847,7 +847,7 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
         transition: 'transform 0.0s linear'
     });
 
-    // Scaled dimensions for layout
+    // Scaled dimensions — naturally centered (Math.min ensures scaledW≤viewW and scaledH≤viewH)
     const scaledW = GAME_WIDTH * scale;
     const scaledH = GAME_HEIGHT * scale;
     const offsetX = (window.innerWidth - scaledW) / 2;

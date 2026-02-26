@@ -10,7 +10,7 @@ const HUD = ({ time, stage, stageName, speed, progress, totalDistance }) => {
     const secs = Math.ceil(time % 60);
 
     return (
-        <div className="absolute top-0 left-0 w-full pointer-events-none z-40 p-3 md:p-4 flex flex-col justify-between h-full pb-28 md:pb-10">
+        <div className="fixed inset-0 pointer-events-none z-40 p-3 md:p-4 flex flex-col justify-between pb-4 md:pb-4">
 
             {/* ── TOP BAR ── */}
             <div className="flex justify-between items-start gap-2">

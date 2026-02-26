@@ -1,103 +1,130 @@
 import React from 'react';
-import { Play, Trophy, Settings } from 'lucide-react';
+import { Play, Trophy, Settings, LogOut } from 'lucide-react';
+import SFX from '../utils/soundManager';
 
 const MainMenu = ({ onStart, onLevelSelect, onSettings, onQuit }) => {
     return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center z-50 overflow-hidden bg-black font-sans">
-            {/* ... (background and other sections remain unchanged) ... */}
+        <div className="absolute inset-0 z-50 overflow-hidden font-sans flex flex-col">
 
-            {/* Background Image */}
+            {/* ── Background ── */}
             <div className="absolute inset-0 z-0">
                 <img
                     src="/snow_bg.jpg"
-                    alt="Ice Mountains"
-                    className="w-full h-full object-cover opacity-70"
+                    alt="Snow Mountains"
+                    className="w-full h-full object-cover"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/60"></div>
-                <div className="absolute inset-0 backdrop-blur-[1px]"></div>
+                {/* Gradient overlay — darker at bottom for buttons readability */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-black/50" />
+                <div className="absolute inset-0 backdrop-blur-[1px]" />
             </div>
 
-            {/* Snow/Particles Effect */}
-            <div className="absolute inset-0 z-0 pointer-events-none opacity-40 animate-pulse bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent"></div>
+            {/* ── Ambient glow particle ── */}
+            <div className="absolute inset-0 z-0 pointer-events-none opacity-30 animate-pulse"
+                style={{ background: 'radial-gradient(ellipse at 50% 30%, rgba(6,182,212,0.2) 0%, transparent 70%)' }} />
 
-            {/* Main "Cylinder" Container */}
-            <div className="relative z-10 flex flex-col md:flex-row items-center p-5 md:p-12 rounded-[3em] bg-gradient-to-b from-white/10 to-white/5 backdrop-blur-xl border border-white/20 shadow-[0_0_50px_rgba(0,150,255,0.3)] max-w-4xl w-full mx-4 overflow-y-auto max-h-[90vh] ring-1 ring-white/30 transition-all hover:shadow-[0_0_80px_rgba(0,180,255,0.4)]">
+            {/* ── Top: Branding section ── */}
+            <div className="relative z-10 flex flex-col items-center justify-center flex-1 px-6 pt-10 pb-4 gap-4">
 
-                {/* Cylinder Highlight/Reflection */}
-                <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/50 to-transparent"></div>
-                <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent"></div>
-
-                {/* Left Side: Logo & Title */}
-                {/* On landscape phones: flex-row, logo shrinks */}
-                <div className="flex flex-row md:flex-col items-center md:items-start md:w-1/2 md:pr-8 gap-4 md:gap-0 w-full md:w-auto">
-                    {/* Logo Section - Circular */}
-                    <div className="flex flex-col items-center mb-0 md:mb-6 flex-shrink-0">
-                        <div className="relative w-20 h-20 md:w-48 md:h-48 rounded-full p-1 bg-gradient-to-tr from-cyan-400 to-blue-600 shadow-[0_0_20px_rgba(0,200,255,0.6)] animate-float">
-                            <div className="w-full h-full rounded-full overflow-hidden bg-black/50 backdrop-blur-sm border-2 border-white/10 relative">
-                                <img
-                                    src="/logo.png"
-                                    alt="M&R Game Developer"
-                                    className="w-full h-full object-cover transform hover:scale-110 transition-transform duration-700"
-                                    onError={(e) => e.target.style.display = 'none'}
-                                />
-                            </div>
-                        </div>
+                {/* Logo circle */}
+                <div className="relative w-24 h-24 md:w-36 md:h-36 rounded-full p-1
+                    bg-gradient-to-tr from-cyan-400 to-blue-600
+                    shadow-[0_0_30px_rgba(0,200,255,0.5)] animate-float flex-shrink-0">
+                    <div className="w-full h-full rounded-full overflow-hidden bg-black/50 border-2 border-white/10">
+                        <img
+                            src="/logo.png"
+                            alt="Snow Run"
+                            className="w-full h-full object-cover"
+                            onError={(e) => e.target.style.display = 'none'}
+                        />
                     </div>
-
-                    {/* Title Section */}
-                    <div className="text-left md:text-left mb-4 md:mb-8 relative flex-1">
-                        <h1 className="text-3xl md:text-8xl font-[900] text-transparent bg-clip-text bg-gradient-to-b from-white to-cyan-300 drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] tracking-tighter italic scale-y-110 break-words"
-                            style={{ fontFamily: "'Outfit', sans-serif" }}>
-                            SNOW RUN
-                        </h1>
-                        <div className="h-1 w-20 md:w-24 bg-gradient-to-r from-transparent via-cyan-400 to-transparent mt-2 md:mt-4 rounded-full shadow-[0_0_10px_cyan]"></div>
-                    </div>
+                    {/* Orbit ring */}
+                    <div className="absolute -inset-2 rounded-full border border-cyan-400/20 animate-spin"
+                        style={{ animationDuration: '8s' }} />
                 </div>
 
-                {/* Right Side: Menu Buttons */}
-                <div className="flex flex-col gap-2 md:gap-4 w-full md:w-1/2 px-0 md:px-4">
-                    <button
-                        onClick={onStart}
-                        className="group relative w-full bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-sm md:text-xl py-3 md:py-4 rounded-full transition-all shadow-[0_4px_15px_rgba(0,0,0,0.3)] hover:shadow-[0_0_20px_rgba(0,255,255,0.5)] overflow-hidden border border-white/10"
-                    >
-                        <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 rounded-full"></div>
-                        <span className="relative z-10 tracking-[0.2em] flex items-center justify-center gap-2">
-                            <Play className="w-4 h-4 md:w-5 md:h-5 fill-current" /> PLAY GAME
-                        </span>
-                    </button>
-
-                    <div className="grid grid-cols-2 md:flex md:flex-col gap-2 md:gap-4">
-                        <button
-                            onClick={onLevelSelect}
-                            className="group relative w-full bg-black/40 hover:bg-black/60 text-cyan-50 font-semibold text-xs md:text-lg py-2 md:py-3 rounded-full transition-all border border-white/10 hover:border-cyan-400/50 backdrop-blur-md"
-                        >
-                            <span className="tracking-[0.15em] group-hover:text-cyan-300 transition-colors flex items-center justify-center gap-2">
-                                <Trophy className="w-3 h-3 md:w-4 md:h-4" /> LEVELS
-                            </span>
-                        </button>
-
-                        <button
-                            onClick={onSettings}
-                            className="group relative w-full bg-black/40 hover:bg-black/60 text-cyan-50 font-semibold text-xs md:text-lg py-2 md:py-3 rounded-full transition-all border border-white/10 hover:border-cyan-400/50 backdrop-blur-md"
-                        >
-                            <span className="tracking-[0.15em] group-hover:text-cyan-300 transition-colors flex items-center justify-center gap-2">
-                                <Settings className="w-3 h-3 md:w-4 md:h-4" /> SETTINGS
-                            </span>
-                        </button>
-                    </div>
-
-                    <button
-                        onClick={onQuit}
-                        className="group relative w-full bg-red-900/30 hover:bg-red-900/50 text-red-100/80 font-semibold text-xs md:text-lg py-2 md:py-3 rounded-full transition-all border border-white/5 hover:border-red-500/30 backdrop-blur-md"
-                    >
-                        <span className="tracking-[0.15em] group-hover:text-red-300 transition-colors">QUIT</span>
-                    </button>
-
-                    {/* v-label inside right column on md+ */}
-                    <div className="mt-1 md:mt-4 text-center md:text-right text-[8px] md:text-[10px] text-cyan-200/40 font-mono tracking-[0.3em]">
-                        v2.1 FROSTBITE
-                    </div>
+                {/* Title */}
+                <div className="text-center">
+                    <h1 className="text-5xl md:text-8xl font-[900] text-transparent bg-clip-text
+                        bg-gradient-to-b from-white via-cyan-100 to-cyan-400
+                        tracking-tighter italic drop-shadow-[0_4px_20px_rgba(0,200,255,0.4)]"
+                        style={{ fontFamily: "'Outfit', sans-serif" }}>
+                        SNOW RUN
+                    </h1>
+                    <p className="text-cyan-300/50 text-xs md:text-sm tracking-[0.4em] font-mono mt-1 uppercase">
+                        v2.1 Frostbite Edition
+                    </p>
                 </div>
+
+                {/* Secondary buttons — row on mobile, stacked on desktop */}
+                <div className="flex flex-row md:flex-col gap-3 mt-2 w-full max-w-xs">
+                    <button
+                        onClick={() => { SFX.click(); onLevelSelect(); }}
+                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl
+                            font-bold text-xs md:text-sm tracking-widest text-cyan-100
+                            border border-white/10 hover:border-cyan-400/40
+                            bg-white/5 hover:bg-white/10 backdrop-blur-md
+                            transition-all hover:scale-[1.02] active:scale-95">
+                        <Trophy className="w-4 h-4 text-cyan-400" />
+                        LEVELS
+                    </button>
+
+                    <button
+                        onClick={() => { SFX.click(); onSettings(); }}
+                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl
+                            font-bold text-xs md:text-sm tracking-widest text-cyan-100
+                            border border-white/10 hover:border-cyan-400/40
+                            bg-white/5 hover:bg-white/10 backdrop-blur-md
+                            transition-all hover:scale-[1.02] active:scale-95">
+                        <Settings className="w-4 h-4 text-cyan-400" />
+                        SETTINGS
+                    </button>
+
+                    <button
+                        onClick={() => { SFX.click(); onQuit(); }}
+                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl
+                            font-bold text-xs md:text-sm tracking-widest text-red-300/70
+                            border border-white/5 hover:border-red-500/30
+                            bg-white/3 hover:bg-red-950/30 backdrop-blur-md
+                            transition-all hover:scale-[1.02] active:scale-95">
+                        <LogOut className="w-4 h-4" />
+                        QUIT
+                    </button>
+                </div>
+            </div>
+
+            {/* ── Bottom: BIG PLAY BUTTON pinned at bottom ── */}
+            {/* This is the "blue padding" area the user wants to use */}
+            <div className="relative z-10 px-5 pb-8 pt-4 flex-shrink-0"
+                style={{ paddingBottom: 'max(32px, env(safe-area-inset-bottom, 32px))' }}>
+
+                {/* Glow line above */}
+                <div className="h-px w-full bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent mb-5" />
+
+                <button
+                    onClick={() => { SFX.click(); onStart(); }}
+                    className="group relative w-full py-5 md:py-6 rounded-2xl overflow-hidden
+                        font-black text-white text-lg md:text-2xl tracking-[0.2em]
+                        transition-all duration-300 hover:scale-[1.01] active:scale-[0.98]"
+                    style={{
+                        background: 'linear-gradient(135deg, #0891b2 0%, #2563eb 50%, #7c3aed 100%)',
+                        boxShadow: '0 0 40px rgba(6,182,212,0.4), 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.2)'
+                    }}>
+                    {/* Shimmer sweep */}
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                        style={{ background: 'linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.15) 50%, transparent 70%)', animation: 'shimmer 1.5s linear infinite', backgroundSize: '200% auto' }} />
+
+                    <span className="relative z-10 flex items-center justify-center gap-3">
+                        <Play className="w-6 h-6 md:w-7 md:h-7 fill-current drop-shadow" />
+                        PLAY GAME
+                    </span>
+
+                    {/* Pulse ring */}
+                    <div className="absolute inset-0 rounded-2xl border-2 border-cyan-400/30 group-hover:border-cyan-400/60 transition-colors" />
+                </button>
+
+                <p className="text-center text-[9px] text-white/15 font-mono tracking-[0.4em] mt-3">
+                    BUILT BY RUDRA_KUMAR_GUPTA
+                </p>
             </div>
         </div>
     );
