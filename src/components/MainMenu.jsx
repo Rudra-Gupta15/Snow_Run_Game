@@ -21,17 +21,18 @@ const MainMenu = ({ onStart, onLevelSelect, onSettings, onQuit }) => {
             <div className="absolute inset-0 z-0 pointer-events-none opacity-40 animate-pulse bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white/10 via-transparent to-transparent"></div>
 
             {/* Main "Cylinder" Container */}
-            <div className="relative z-10 flex flex-col md:flex-row items-center p-8 md:p-12 rounded-[3em] bg-gradient-to-b from-white/10 to-white/5 backdrop-blur-xl border border-white/20 shadow-[0_0_50px_rgba(0,150,255,0.3)] max-w-4xl w-full mx-4 overflow-hidden ring-1 ring-white/30 transition-all hover:shadow-[0_0_80px_rgba(0,180,255,0.4)]">
+            <div className="relative z-10 flex flex-col md:flex-row items-center p-5 md:p-12 rounded-[3em] bg-gradient-to-b from-white/10 to-white/5 backdrop-blur-xl border border-white/20 shadow-[0_0_50px_rgba(0,150,255,0.3)] max-w-4xl w-full mx-4 overflow-y-auto max-h-[90vh] ring-1 ring-white/30 transition-all hover:shadow-[0_0_80px_rgba(0,180,255,0.4)]">
 
                 {/* Cylinder Highlight/Reflection */}
                 <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/50 to-transparent"></div>
                 <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent"></div>
 
-                {/* Left Side: Logo & Title (Side-by-side on landscape) */}
-                <div className="flex flex-col items-center md:items-start md:w-1/2 md:pr-8">
+                {/* Left Side: Logo & Title */}
+                {/* On landscape phones: flex-row, logo shrinks */}
+                <div className="flex flex-row md:flex-col items-center md:items-start md:w-1/2 md:pr-8 gap-4 md:gap-0 w-full md:w-auto">
                     {/* Logo Section - Circular */}
-                    <div className="flex flex-col items-center mb-6">
-                        <div className="relative w-32 h-32 md:w-48 md:h-48 rounded-full p-1 bg-gradient-to-tr from-cyan-400 to-blue-600 shadow-[0_0_20px_rgba(0,200,255,0.6)] animate-float">
+                    <div className="flex flex-col items-center mb-0 md:mb-6 flex-shrink-0">
+                        <div className="relative w-20 h-20 md:w-48 md:h-48 rounded-full p-1 bg-gradient-to-tr from-cyan-400 to-blue-600 shadow-[0_0_20px_rgba(0,200,255,0.6)] animate-float">
                             <div className="w-full h-full rounded-full overflow-hidden bg-black/50 backdrop-blur-sm border-2 border-white/10 relative">
                                 <img
                                     src="/logo.png"
@@ -44,17 +45,17 @@ const MainMenu = ({ onStart, onLevelSelect, onSettings, onQuit }) => {
                     </div>
 
                     {/* Title Section */}
-                    <div className="text-center md:text-left mb-8 relative w-full">
-                        <h1 className="text-4xl md:text-8xl font-[900] text-transparent bg-clip-text bg-gradient-to-b from-white to-cyan-300 drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] tracking-tighter italic scale-y-110 break-words"
+                    <div className="text-left md:text-left mb-4 md:mb-8 relative flex-1">
+                        <h1 className="text-3xl md:text-8xl font-[900] text-transparent bg-clip-text bg-gradient-to-b from-white to-cyan-300 drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] tracking-tighter italic scale-y-110 break-words"
                             style={{ fontFamily: "'Outfit', sans-serif" }}>
                             SNOW RUN
                         </h1>
-                        <div className="h-1 w-24 bg-gradient-to-r from-transparent via-cyan-400 to-transparent md:mx-0 mx-auto mt-4 rounded-full shadow-[0_0_10px_cyan]"></div>
+                        <div className="h-1 w-20 md:w-24 bg-gradient-to-r from-transparent via-cyan-400 to-transparent mt-2 md:mt-4 rounded-full shadow-[0_0_10px_cyan]"></div>
                     </div>
                 </div>
 
                 {/* Right Side: Menu Buttons */}
-                <div className="flex flex-col gap-3 md:gap-4 w-full md:w-1/2 px-4">
+                <div className="flex flex-col gap-2 md:gap-4 w-full md:w-1/2 px-0 md:px-4">
                     <button
                         onClick={onStart}
                         className="group relative w-full bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-sm md:text-xl py-3 md:py-4 rounded-full transition-all shadow-[0_4px_15px_rgba(0,0,0,0.3)] hover:shadow-[0_0_20px_rgba(0,255,255,0.5)] overflow-hidden border border-white/10"
@@ -65,7 +66,7 @@ const MainMenu = ({ onStart, onLevelSelect, onSettings, onQuit }) => {
                         </span>
                     </button>
 
-                    <div className="grid grid-cols-2 md:flex md:flex-col gap-3 md:gap-4">
+                    <div className="grid grid-cols-2 md:flex md:flex-col gap-2 md:gap-4">
                         <button
                             onClick={onLevelSelect}
                             className="group relative w-full bg-black/40 hover:bg-black/60 text-cyan-50 font-semibold text-xs md:text-lg py-2 md:py-3 rounded-full transition-all border border-white/10 hover:border-cyan-400/50 backdrop-blur-md"
@@ -93,7 +94,7 @@ const MainMenu = ({ onStart, onLevelSelect, onSettings, onQuit }) => {
                     </button>
 
                     {/* v-label inside right column on md+ */}
-                    <div className="mt-2 md:mt-4 text-center md:text-right text-[8px] md:text-[10px] text-cyan-200/40 font-mono tracking-[0.3em]">
+                    <div className="mt-1 md:mt-4 text-center md:text-right text-[8px] md:text-[10px] text-cyan-200/40 font-mono tracking-[0.3em]">
                         v2.1 FROSTBITE
                     </div>
                 </div>

@@ -62,7 +62,8 @@ const MobileControls = ({ onAction }) => {
     }, []);
 
     return (
-        <div className="absolute inset-0 pointer-events-none z-[100] flex items-end justify-between p-4 md:hidden">
+        <div className="fixed inset-0 pointer-events-none z-[200] flex items-end justify-between md:hidden"
+            style={{ padding: 'env(safe-area-inset-top, 16px) env(safe-area-inset-right, 20px) max(env(safe-area-inset-bottom, 16px), 20px) env(safe-area-inset-left, 20px)' }}>
             {/* Left: Joystick */}
             <div
                 ref={containerRef}

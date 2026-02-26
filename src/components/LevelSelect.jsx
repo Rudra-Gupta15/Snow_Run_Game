@@ -1,100 +1,104 @@
 import React from 'react';
-import { Lock, Star, ChevronLeft } from 'lucide-react';
+import { Lock, ChevronLeft } from 'lucide-react';
+import SFX from '../utils/soundManager';
+
+const levels = [
+    { id: 1, name: 'Frozen Tundra', sub: 'The Awakening', difficulty: 'Easy', color: 'from-orange-400 to-yellow-500' },
+    { id: 2, name: 'Glacial Caverns', sub: 'The Descent', difficulty: 'Medium', color: 'from-green-500 to-emerald-600' },
+    { id: 3, name: 'Snowy Peak', sub: 'The Climb', difficulty: 'Hard', color: 'from-red-500 to-orange-600' },
+    { id: 4, name: 'Ice Ridge', sub: 'The Summit', difficulty: 'Very Hard', color: 'from-purple-500 to-indigo-600' },
+    { id: 5, name: 'Blizzard Run', sub: 'Boss Fight', difficulty: 'Insane', color: 'from-pink-500 to-rose-600' },
+];
+
+const difficultyColor = {
+    Easy: 'text-green-400', Medium: 'text-yellow-400',
+    Hard: 'text-orange-400', 'Very Hard': 'text-red-400', Insane: 'text-pink-400'
+};
 
 const LevelSelect = ({ onSelectLevel, onBack, unlockedStage = 5 }) => {
-    const levels = [
-        { id: 1, name: 'Frozen Tundra', difficulty: 'Easy', color: 'from-orange-400 to-yellow-600', shadow: 'shadow-orange-500/20' },
-        { id: 2, name: 'Glacial Caverns', difficulty: 'Medium', color: 'from-green-500 to-emerald-700', shadow: 'shadow-emerald-500/20' },
-        { id: 3, name: 'Snowy Peak', difficulty: 'Hard', color: 'from-red-500 to-orange-700', shadow: 'shadow-red-500/20' },
-        { id: 4, name: 'Ice Ridge', difficulty: 'Very Hard', color: 'from-purple-500 to-indigo-700', shadow: 'shadow-indigo-500/20' },
-        { id: 5, name: 'Blizzard Run', difficulty: 'Insane', color: 'from-pink-500 to-rose-700', shadow: 'shadow-rose-500/20' },
-    ];
-
     return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center z-50 overflow-hidden bg-black font-sans">
-            {/* Background Image - Same as Main Menu */}
+        <div className="absolute inset-0 flex flex-col z-50 overflow-hidden bg-black font-sans">
+            {/* Background */}
             <div className="absolute inset-0 z-0">
-                <img
-                    src="/snow_bg.jpg"
-                    alt="Ice Mountains"
-                    className="w-full h-full object-cover opacity-60"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/70"></div>
-                <div className="absolute inset-0 backdrop-blur-[2px]"></div>
+                <img src="/snow_bg.jpg" alt="Background" className="w-full h-full object-cover opacity-50" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/60" />
+                <div className="absolute inset-0 backdrop-blur-sm" />
             </div>
 
-            <div className="relative z-10 w-full max-w-7xl px-4 md:px-8 h-full flex flex-col py-6 md:py-12 overflow-y-auto landscape:overflow-y-visible">
-                <button
-                    onClick={onBack}
-                    className="group mb-4 md:mb-8 flex items-center gap-2 text-cyan-200/60 hover:text-cyan-300 transition-all w-fit px-4 py-2 rounded-full hover:bg-white/5 border border-transparent hover:border-white/10"
-                >
-                    <ChevronLeft className="w-4 h-4 md:w-5 md:h-5 group-hover:-translate-x-1 transition-transform" />
-                    <span className="tracking-widest text-[10px] md:text-sm font-bold">BACK TO MENU</span>
+            <div className="relative z-10 flex flex-col h-full px-6 md:px-10 py-6 md:py-8">
+                {/* Back button */}
+                <button onClick={() => { SFX.click(); onBack(); }}
+                    className="group mb-6 flex items-center gap-1.5 w-fit px-4 py-2 rounded-full text-cyan-300/60 hover:text-cyan-200 hover:bg-white/5 border border-transparent hover:border-white/10 transition-all">
+                    <ChevronLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                    <span className="text-xs font-bold tracking-[0.3em]">BACK TO MENU</span>
                 </button>
 
-                <div className="text-center mb-6 md:mb-12 relative">
-                    <h2 className="text-4xl md:text-7xl font-[900] text-transparent bg-clip-text bg-gradient-to-b from-white to-cyan-300 drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] tracking-tighter italic scale-y-110"
+                {/* Title */}
+                <div className="text-center mb-8">
+                    <h2 className="text-4xl md:text-6xl font-[900] text-transparent bg-clip-text bg-gradient-to-b from-white to-cyan-300 tracking-tighter italic"
                         style={{ fontFamily: "'Outfit', sans-serif" }}>
                         SELECT STAGE
                     </h2>
-                    <div className="h-1 w-24 md:w-32 bg-gradient-to-r from-transparent via-cyan-400 to-transparent mx-auto mt-4 rounded-full shadow-[0_0_10px_cyan]"></div>
+                    <div className="h-0.5 w-20 bg-gradient-to-r from-transparent via-cyan-400 to-transparent mx-auto mt-3 rounded-full" />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-6 flex-1 items-center pb-8 md:pb-12">
+                {/* Level cards — 5 columns, fills screen */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 flex-1 max-h-[65vh]">
                     {levels.map((level, index) => {
                         const isLocked = level.id > unlockedStage;
                         return (
                             <button
                                 key={level.id}
-                                onClick={() => !isLocked && onSelectLevel(level.id)}
+                                onClick={() => { if (!isLocked) { SFX.click(); onSelectLevel(level.id); } }}
                                 disabled={isLocked}
-                                className={`group relative flex flex-col items-center p-4 md:p-6 rounded-[2em] transition-all duration-500 transform hover:scale-105 active:scale-95 animate-fade-in-up h-44 md:h-72 w-full
-                                    ${isLocked ? 'opacity-40 grayscale cursor-not-allowed' : 'hover:shadow-[0_0_40px_rgba(0,150,255,0.3)]'}
-                                    bg-gradient-to-b from-white/10 to-white/5 backdrop-blur-xl border border-white/10 ring-1 ring-white/20`}
-                                style={{ animationDelay: `${index * 0.1}s` }}
-                            >
-                                {/* Glow Effect on Hover */}
+                                className={`group relative flex flex-col items-center justify-center gap-3 p-5 rounded-2xl border transition-all duration-300
+                                    ${isLocked
+                                        ? 'opacity-40 grayscale cursor-not-allowed border-white/5 bg-white/3'
+                                        : 'hover:scale-105 active:scale-95 border-white/10 hover:border-cyan-400/30 cursor-pointer'
+                                    }
+                                    backdrop-blur-lg`}
+                                style={{
+                                    background: isLocked ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.07)',
+                                    animationDelay: `${index * 0.08}s`,
+                                    boxShadow: isLocked ? 'none' : 'inset 0 1px 0 rgba(255,255,255,0.1)'
+                                }}>
+
+                                {/* Hover glow */}
                                 {!isLocked && (
-                                    <div className={`absolute inset-0 rounded-[2em] bg-gradient-to-br ${level.color} opacity-0 group-hover:opacity-10 transition-opacity blur-xl`}></div>
+                                    <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${level.color} opacity-0 group-hover:opacity-8 transition-opacity blur-md`} />
                                 )}
 
-                                {/* Level Number Icon */}
-                                <div className="relative mb-6">
-                                    {isLocked ? (
-                                        <div className="w-12 h-12 md:w-20 md:h-20 rounded-xl md:rounded-2xl bg-black/40 flex items-center justify-center border border-white/5">
-                                            <Lock className="w-4 h-4 md:w-8 md:h-8 text-gray-500" />
-                                        </div>
-                                    ) : (
-                                        <div className={`w-12 h-12 md:w-20 md:h-20 rounded-xl md:rounded-2xl bg-gradient-to-tr ${level.color} flex items-center justify-center shadow-lg transform group-hover:rotate-6 transition-transform duration-500`}>
-                                            <span className="text-xl md:text-3xl font-black text-white drop-shadow-md">{level.id}</span>
-                                        </div>
-                                    )}
-                                    {/* Reflection line */}
-                                    <div className="absolute top-0 left-0 right-0 h-[1px] bg-white/30 rounded-full"></div>
+                                {/* Number badge */}
+                                <div className={`w-14 h-14 md:w-16 md:h-16 rounded-xl flex items-center justify-center shadow-lg
+                                    ${isLocked ? 'bg-black/40 border border-white/5' : `bg-gradient-to-tr ${level.color}`}
+                                    transform group-hover:rotate-3 transition-transform duration-300`}>
+                                    {isLocked
+                                        ? <Lock className="w-5 h-5 text-gray-500" />
+                                        : <span className="text-2xl md:text-3xl font-black text-white drop-shadow">{level.id}</span>
+                                    }
                                 </div>
 
-                                <div className="text-center w-full">
-                                    <h3 className="text-sm md:text-xl font-bold text-white mb-1 md:mb-2 tracking-tight group-hover:text-cyan-300 transition-colors">
+                                {/* Info */}
+                                <div className="text-center">
+                                    <div className="text-[11px] md:text-sm font-black text-white tracking-tight group-hover:text-cyan-200 transition-colors leading-tight">
                                         {level.name.toUpperCase()}
-                                    </h3>
-                                    <div className="inline-block px-2 md:px-3 py-0.5 md:py-1 rounded-full bg-black/30 border border-white/5 text-[8px] md:text-[10px] font-bold tracking-[0.2em] text-cyan-200/60 mb-1">
-                                        {level.difficulty}
+                                    </div>
+                                    <div className="text-[8px] md:text-[9px] text-gray-500 mt-0.5 tracking-wider">{level.sub}</div>
+                                    <div className={`text-[9px] md:text-[10px] font-bold tracking-[0.15em] mt-1.5 ${difficultyColor[level.difficulty]}`}>
+                                        {level.difficulty.toUpperCase()}
                                     </div>
                                 </div>
 
-                                {/* Bottom highlight */}
-                                <div className={`absolute bottom-0 left-1/4 right-1/4 h-[2px] bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity`}></div>
+                                {/* Bottom glow line */}
+                                <div className="absolute bottom-0 left-1/4 right-1/4 h-px bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                             </button>
-                        )
+                        );
                     })}
                 </div>
 
-                {/* Footer Section */}
-                <div className="mt-auto text-center py-4">
-                    <p className="text-[10px] text-cyan-200/20 font-mono tracking-[0.5em]">
-                        SELECT CARTRIDGE TO BOOT LEVEL
-                    </p>
-                </div>
+                <p className="text-center text-[9px] text-white/15 font-mono tracking-[0.5em] mt-auto pt-4">
+                    SELECT CARTRIDGE TO BOOT LEVEL
+                </p>
             </div>
         </div>
     );

@@ -1,18 +1,48 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import HUD from './HUD';
 import GameOverOverlay from './GameOverOverlay';
 import LevelCompleteOverlay from './LevelCompleteOverlay';
 import MobileControls from './MobileControls';
 import { RotateCcw, ChevronRight, Home } from 'lucide-react';
+import SFX from '../utils/soundManager';
+
+// Reference resolution the game was designed for
+const GAME_WIDTH = 1280;
+const GAME_HEIGHT = 720;
+
+// Hook: scale game canvas to CONTAIN within screen (no clipping, no black bars trick)
+// Uses Math.min so game fully fits — outer wrapper uses matching sky gradient to hide bars.
+function useScaleToFit() {
+    const [scale, setScale] = useState(1);
+
+    useEffect(() => {
+        const compute = () => {
+            const scaleX = window.innerWidth / GAME_WIDTH;
+            const scaleY = window.innerHeight / GAME_HEIGHT;
+            // CONTAIN: never clip any content — outer wrapper bg matches game sky
+            setScale(Math.min(scaleX, scaleY));
+        };
+        compute();
+        window.addEventListener('resize', compute);
+        window.addEventListener('orientationchange', () => setTimeout(compute, 200));
+        return () => {
+            window.removeEventListener('resize', compute);
+            window.removeEventListener('orientationchange', compute);
+        };
+    }, []);
+
+    return scale;
+}
 
 export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, globalTime, setGlobalTime }) {
     // FORCE NUMERIC STAGE
     const numericStage = Number(stage);
     stage = numericStage; // Override prop locally to ensure consistency
 
-    const [gameState, setGameState] = useState('playing'); // playing, completed, failed, wasted (caught by bear)
-    const [showIntro, setShowIntro] = useState(true); // Show story intro on load
-    const [moonPhase, setMoonPhase] = useState('normal'); // normal, dim, eclipse
+    const [gameState, setGameState] = useState('playing'); // playing, completed, failed, wasted
+    const [showIntro, setShowIntro] = useState(true);
+    const [moonPhase, setMoonPhase] = useState('normal');
+    const scale = useScaleToFit();
     const [dataLogActive, setDataLogActive] = useState(false);
     // Level 3 State
     const [wind, setWind] = useState({ x: 0, y: 0 });
@@ -51,23 +81,23 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
     const touchInputs = useRef({ move: 0, jump: false, boost: false });
     const gameLoopRef = useRef(null);
 
-    // Physics Constants
-    const GRAVITY = 0.6;
-    const FRICTION = 0.96;
+    // Physics Constants — harder difficulty
+    const GRAVITY = 0.78;        // was 0.6 — heavier, less float
+    const FRICTION = 0.955;       // was 0.96 — slightly more slippery on ice
     const WHEEL_RADIUS = 8;
 
     // Speed configs
-    const BASE_MAX_SPEED = 18;
-    const BOOST_MAX_SPEED = BASE_MAX_SPEED * 2.5; // 2.5x boost
-    const ACCELERATION = 0.6; // Smoother acceleration
+    const BASE_MAX_SPEED = 16;    // was 18 — slightly tighter control
+    const BOOST_MAX_SPEED = BASE_MAX_SPEED * 2.8; // bigger boost reward
+    const ACCELERATION = 0.55;    // slightly less snappy
 
-    // Stage configurations (Solstice Spark Theme)
+    // Stage configurations — more obstacles, longer levels = harder
     const stageConfigs = {
-        1: { name: 'Frozen Tundra', subtitle: 'The Awakening', obstacles: 15, length: 12000, bg: 'from-sky-800 via-blue-900 to-slate-900', bgImage: '/snow_bg.jpg' },
-        2: { name: 'Glacial Caverns', subtitle: 'The Descent', obstacles: 25, length: 18000, bg: 'from-indigo-950 via-cyan-950 to-black', bgImage: '/snow_bg.jpg' },
-        3: { name: 'Snowy Peak', subtitle: 'The Climb', obstacles: 40, length: 22000, bg: 'from-sky-800 via-blue-900 to-slate-900', bgImage: '/snow_bg.jpg' },
-        4: { name: 'Ice Ridge', subtitle: 'The Summit', obstacles: 35, length: 26000, bg: 'from-sky-800 via-blue-900 to-slate-900', bgImage: null },
-        5: { name: 'Blizzard Run', subtitle: 'The Boss Fight', obstacles: 20, length: 30000, bg: 'from-red-900 via-slate-900 to-black', bgImage: null }
+        1: { name: 'Frozen Tundra', subtitle: 'The Awakening', obstacles: 22, length: 14000, bg: 'from-sky-800 via-blue-900 to-slate-900', bgImage: '/snow_bg.jpg' },
+        2: { name: 'Glacial Caverns', subtitle: 'The Descent', obstacles: 35, length: 20000, bg: 'from-indigo-950 via-cyan-950 to-black', bgImage: '/snow_bg.jpg' },
+        3: { name: 'Snowy Peak', subtitle: 'The Climb', obstacles: 55, length: 25000, bg: 'from-sky-800 via-blue-900 to-slate-900', bgImage: '/snow_bg.jpg' },
+        4: { name: 'Ice Ridge', subtitle: 'The Summit', obstacles: 50, length: 30000, bg: 'from-sky-800 via-blue-900 to-slate-900', bgImage: null },
+        5: { name: 'Blizzard Run', subtitle: 'The Boss Fight', obstacles: 30, length: 35000, bg: 'from-red-900 via-slate-900 to-black', bgImage: null }
     };
 
     const stageConfig = stageConfigs[stage] || stageConfigs[1];
@@ -117,6 +147,68 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
             d += `L ${x} ${getGroundHeight(x) + yOffset} `;
         }
         d += `L ${length} ${bottomY} Z`;
+        return d;
+    };
+
+    // Smooth terrain path using quadratic bezier curves for natural ice/snow look
+    const getTerrainPathSmooth = (yOffset = 0) => {
+        const length = stageConfig.length + 1500;
+        const bottomY = 2000;
+        const step = 40; // sample every 40px, use midpoints as control points
+        let pts = [];
+        for (let x = -500; x <= length; x += step) {
+            pts.push({ x, y: getGroundHeight(x) + yOffset });
+        }
+        let d = `M -500 ${bottomY} L ${pts[0].x} ${pts[0].y} `;
+        for (let i = 0; i < pts.length - 1; i++) {
+            const mx = (pts[i].x + pts[i + 1].x) / 2;
+            const my = (pts[i].y + pts[i + 1].y) / 2;
+            d += `Q ${pts[i].x} ${pts[i].y} ${mx} ${my} `;
+        }
+        d += `L ${length} ${pts[pts.length - 1].y} L ${length} ${bottomY} Z`;
+        return d;
+    };
+
+    // Just the top surface line (for stroke-only layers), smooth bezier
+    const getTerrainSurfaceLine = (yOffset = 0) => {
+        const length = stageConfig.length + 1500;
+        const step = 40;
+        let pts = [];
+        for (let x = -500; x <= length; x += step) {
+            pts.push({ x, y: getGroundHeight(x) + yOffset });
+        }
+        let d = `M ${pts[0].x} ${pts[0].y} `;
+        for (let i = 0; i < pts.length - 1; i++) {
+            const mx = (pts[i].x + pts[i + 1].x) / 2;
+            const my = (pts[i].y + pts[i + 1].y) / 2;
+            d += `Q ${pts[i].x} ${pts[i].y} ${mx} ${my} `;
+        }
+        return d;
+    };
+
+    // A thin strip along the surface (for specular/gloss band)
+    const getTerrainSurfaceStrip = (yOffset = 0, stripHeight = 16) => {
+        const length = stageConfig.length + 1500;
+        const step = 40;
+        let pts = [];
+        for (let x = -500; x <= length; x += step) {
+            pts.push({ x, y: getGroundHeight(x) + yOffset });
+        }
+        // Top edge (forward)
+        let d = `M ${pts[0].x} ${pts[0].y} `;
+        for (let i = 0; i < pts.length - 1; i++) {
+            const mx = (pts[i].x + pts[i + 1].x) / 2;
+            const my = (pts[i].y + pts[i + 1].y) / 2;
+            d += `Q ${pts[i].x} ${pts[i].y} ${mx} ${my} `;
+        }
+        // Bottom edge (backward, offset by stripHeight)
+        d += `L ${pts[pts.length - 1].x} ${pts[pts.length - 1].y + stripHeight} `;
+        for (let i = pts.length - 2; i >= 0; i--) {
+            const mx = (pts[i].x + pts[i + 1].x) / 2;
+            const my = (pts[i].y + pts[i + 1].y) / 2 + stripHeight;
+            d += `Q ${pts[i + 1].x} ${pts[i + 1].y + stripHeight} ${mx} ${my} `;
+        }
+        d += 'Z';
         return d;
     };
 
@@ -268,7 +360,7 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                     height: isBigBear ? 60 : 40,
                     type: 'bear',
                     direction: -1,
-                    speed: 2 + Math.random() * 2
+                    speed: 3 + Math.random() * 3  // was 2+2, now 3+3 = harder
                 });
             }
         }
@@ -363,10 +455,14 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
 
                 // Level 4: Enemy (Visual Only Here)
 
-                // Boost (E key)
-                if (keysPressed.current['e'] || touchInputs.current.boost) {
+                // Boost (E key) — play sound once on activation
+                const boostActive = keysPressed.current['e'] || touchInputs.current.boost;
+                if (boostActive) {
                     currentMaxSpeed = BOOST_MAX_SPEED;
                     if (Math.random() > 0.5) createParticle(newBike.x - 20, newBike.y, '#00FFFF');
+                    if (!newBike._boostPlaying) { SFX.boost(); newBike._boostPlaying = true; }
+                } else {
+                    newBike._boostPlaying = false;
                 }
 
                 // Forward (D)
@@ -402,20 +498,23 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                         newBike.velocityY = -13 * jumpMod;
                         newBike.jumpCount = 1;
                         createExplosion(newBike.x, newBike.y + 10, 'snow');
+                        SFX.jump();
                     } else if (newBike.jumpCount < 2) {
                         // Double Jump
-                        newBike.velocityY = -12; // Slightly weaker second jump
+                        newBike.velocityY = -12;
                         newBike.jumpCount = 2;
-                        newBike.velocityX += 2; // Slight forward boost
+                        newBike.velocityX += 2;
 
                         // Check for Flight Mechanic
                         if (keysPressed.current['e'] || touchInputs.current.boost) {
-                            newBike.flightTimer = 66; // approx 2 seconds at 30fps (66/33 = 2s)
-                            newBike.velocityY = 0; // Immediate stabilization
+                            newBike.flightTimer = 66;
+                            newBike.velocityY = 0;
                             createExplosion(newBike.x, newBike.y, 'gold');
+                            SFX.boost();
                         } else {
-                            createExplosion(newBike.x, newBike.y + 10, 'gold'); // Different effect
+                            createExplosion(newBike.x, newBike.y + 10, 'gold');
                         }
+                        SFX.doubleJump();
                     }
                 } else if (jumpKey && isGrounded && Math.abs(newBike.velocityY) < 2) {
                     // Fallback for holding jump on ground (bunny hop)
@@ -423,6 +522,7 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                     newBike.velocityY = -13 * jumpMod;
                     newBike.jumpCount = 1;
                     createExplosion(newBike.x, newBike.y + 10, 'snow');
+                    SFX.jump();
                 }
 
                 // Physics
@@ -462,12 +562,15 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                         newBike.crashed = true;
                         createExplosion(newBike.x, newBike.y);
                         setGameState('failed');
+                        SFX.crash();
                     } else {
+                        // Play land sound when coming down hard from air
+                        if (newBike.velocityY > 5 && newBike.jumpCount > 0) SFX.land();
                         newBike.y = groundY - WHEEL_RADIUS;
                         newBike.velocityY = 0;
                         newBike.rotation = newBike.rotation * 0.8 + slopeAngle * 0.2;
                         newBike.velocityX += Math.sin(slopeAngle) * 0.4;
-                        newBike.jumpCount = 0; // Reset jump count on landing
+                        newBike.jumpCount = 0;
                     }
                 }
 
@@ -498,6 +601,7 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                                 newBike.crashed = true;
                                 createExplosion(newBike.x, newBike.y);
                                 setGameState('failed');
+                                SFX.crash();
                             }
                         }
                     }
@@ -510,11 +614,11 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                 }
 
                 // Win Condition
-                // Win Condition
                 if (newBike.x > stageConfig.length && gameState === 'playing' && !victoryRef.current) {
                     victoryRef.current = true;
                     setGameState('completed');
                     createExplosion(newBike.x, newBike.y, 'gold');
+                    SFX.levelComplete();
                 }
 
                 // Update Camera
@@ -576,7 +680,7 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                 // Move
 
                 const distToPlayer = bike.x - enemy.x;
-                const detectionRange = 400; // Will start chasing when close
+                const detectionRange = 550; // Increased from 400 — chases sooner
 
                 let moveDir = enemy.direction;
 
@@ -647,10 +751,10 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                     if (newHealth <= 0) {
                         // Boss Defeated
                         createExplosion(prev.x, prev.y, 'gold');
-                        // Trigger Victory
                         if (!victoryRef.current) {
                             victoryRef.current = true;
                             setGameState('completed');
+                            SFX.levelComplete();
                         }
                         return { ...prev, active: false };
                     }
@@ -682,6 +786,7 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                         const dy = bike.y - p.y;
                         if (Math.sqrt(dx * dx + dy * dy) < 20) {
                             // Hit!
+                            SFX.crash();
                             setGameState('failed');
                             createExplosion(bike.x, bike.y);
                             bike.crashed = true; // Mutating ref/state issue? Handled next loop
@@ -742,646 +847,732 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
         transition: 'transform 0.0s linear'
     });
 
+    // Scaled dimensions for layout
+    const scaledW = GAME_WIDTH * scale;
+    const scaledH = GAME_HEIGHT * scale;
+    const offsetX = (window.innerWidth - scaledW) / 2;
+    const offsetY = (window.innerHeight - scaledH) / 2;
+
+    // Sky bg that matches current stage — hides letterbox bars seamlessly
+    const stageSkyBg = {
+        1: 'linear-gradient(to bottom, #0c4a6e, #1e3a8a, #1e293b)',
+        2: 'linear-gradient(to bottom, #1e1b4b, #0c4a6e, #000)',
+        3: 'linear-gradient(to bottom, #0c4a6e, #1e3a8a, #1e293b)',
+        4: 'linear-gradient(to bottom, #0c4a6e, #1e3a8a, #1e293b)',
+        5: 'linear-gradient(to bottom, #450a0a, #1e293b, #000)',
+    };
+
     return (
-        <div className="relative w-full h-full bg-gray-900 overflow-hidden text-white font-sans">
-            {/* Night Sky Gradient OR Image */}
-            {/* Night Sky Gradient OR Image */}
-            {stageConfig.bgImage ? (
-                <div className="fixed inset-0 z-0 bg-cover bg-center transition-all duration-1000"
-                    style={{ backgroundImage: `url(${stageConfig.bgImage})` }}>
-                    {/* Level 3: Darker Atmosphere Overlay */}
+        // Outer full-screen wrapper — background matches game sky so any letterbox is invisible
+        <div style={{ width: '100vw', height: '100vh', background: stageSkyBg[stage] || stageSkyBg[1], overflow: 'hidden', position: 'fixed', inset: 0 }}>
+            {/* Scaled game canvas, centered */}
+            <div style={{
+                position: 'absolute',
+                left: offsetX,
+                top: offsetY,
+                width: GAME_WIDTH,
+                height: GAME_HEIGHT,
+                transformOrigin: 'top left',
+                transform: `scale(${scale})`,
+                overflow: 'hidden'
+            }}>
+                <div className="relative w-full h-full bg-gray-900 overflow-hidden text-white font-sans">
+                    {/* Night Sky Gradient OR Image */}
+                    {/* Night Sky Gradient OR Image */}
+                    {stageConfig.bgImage ? (
+                        <div className="fixed inset-0 z-0 bg-cover bg-center transition-all duration-1000"
+                            style={{ backgroundImage: `url(${stageConfig.bgImage})` }}>
+                            {/* Level 3: Darker Atmosphere Overlay */}
 
-                </div>
-            ) : (
-                <div className={`fixed inset-0 z-0 bg-gradient-to-b ${stageConfig.bg} transition-colors duration-1000`}></div>
-            )}
+                        </div>
+                    ) : (
+                        <div className={`fixed inset-0 z-0 bg-gradient-to-b ${stageConfig.bg} transition-colors duration-1000`}></div>
+                    )}
 
-            {/* Moon & Stars (Hide in Factory) */}
-            {stage === 5 && (
-                <div className="fixed inset-0 z-[1] pointer-events-none">
-                    {/* Dense starfield for Level 5 */}
-                    {Array.from({ length: 160 }, (_, i) => {
-                        const seed = i * 2654435761;
-                        const x = ((seed >> 0) & 0xFFFF) / 0xFFFF * 100;
-                        const y = ((seed >> 5) & 0xFFFF) / 0xFFFF * 100;
-                        const size = 0.5 + (((seed >> 10) & 0xFF) / 0xFF) * 2.5;
-                        const delay = (((seed >> 15) & 0xFF) / 0xFF) * 4;
-                        const bright = 0.4 + (((seed >> 20) & 0xFF) / 0xFF) * 0.6;
-                        const isBlue = i % 5 === 0;
-                        const isPurple = i % 7 === 0;
-                        return (
-                            <div key={`star-${i}`}
-                                className="absolute rounded-full animate-pulse"
+                    {/* Moon & Stars (Hide in Factory) */}
+                    {stage === 5 && (
+                        <div className="fixed inset-0 z-[1] pointer-events-none">
+                            {/* Dense starfield for Level 5 */}
+                            {Array.from({ length: 160 }, (_, i) => {
+                                const seed = i * 2654435761;
+                                const x = ((seed >> 0) & 0xFFFF) / 0xFFFF * 100;
+                                const y = ((seed >> 5) & 0xFFFF) / 0xFFFF * 100;
+                                const size = 0.5 + (((seed >> 10) & 0xFF) / 0xFF) * 2.5;
+                                const delay = (((seed >> 15) & 0xFF) / 0xFF) * 4;
+                                const bright = 0.4 + (((seed >> 20) & 0xFF) / 0xFF) * 0.6;
+                                const isBlue = i % 5 === 0;
+                                const isPurple = i % 7 === 0;
+                                return (
+                                    <div key={`star-${i}`}
+                                        className="absolute rounded-full animate-pulse"
+                                        style={{
+                                            left: `${x}%`,
+                                            top: `${y}%`,
+                                            width: size,
+                                            height: size,
+                                            backgroundColor: isBlue ? '#93c5fd' : isPurple ? '#c4b5fd' : 'white',
+                                            opacity: bright,
+                                            animationDelay: `${delay}s`,
+                                            animationDuration: `${2 + delay * 0.5}s`,
+                                            boxShadow: size > 2 ? `0 0 ${size * 2}px ${isBlue ? '#93c5fd' : isPurple ? '#c4b5fd' : 'white'}` : 'none'
+                                        }}
+                                    />
+                                );
+                            })}
+                            {/* Large glowing stars */}
+                            {[[15, 10], [45, 5], [70, 15], [85, 8], [30, 3], [60, 18], [90, 12]].map(([x, y], i) => (
+                                <div key={`bigstar-${i}`} className="absolute animate-pulse"
+                                    style={{
+                                        left: `${x}%`, top: `${y}%`,
+                                        width: 4, height: 4,
+                                        backgroundColor: 'white',
+                                        borderRadius: '50%',
+                                        opacity: 0.9,
+                                        animationDelay: `${i * 0.7}s`,
+                                        boxShadow: '0 0 8px 2px rgba(255,255,255,0.6), 0 0 20px 4px rgba(165,243,252,0.3)'
+                                    }}
+                                />
+                            ))}
+                            {/* Nebula clouds - purple/red tones for boss level */}
+                            <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_40%_at_20%_20%,rgba(109,40,217,0.12),transparent)]" />
+                            <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_30%_at_80%_15%,rgba(185,28,28,0.08),transparent)]" />
+                        </div>
+                    )}
+                    {/* Moon & Stars (Hide in Factory and Level 5 where we use custom starfield) */}
+                    {stage !== 3 && stage !== 5 && (
+                        <>
+                            {/* Stars */}
+                            <div className="absolute inset-0"
                                 style={{
-                                    left: `${x}%`,
-                                    top: `${y}%`,
-                                    width: size,
-                                    height: size,
-                                    backgroundColor: isBlue ? '#93c5fd' : isPurple ? '#c4b5fd' : 'white',
-                                    opacity: bright,
-                                    animationDelay: `${delay}s`,
-                                    animationDuration: `${2 + delay * 0.5}s`,
-                                    boxShadow: size > 2 ? `0 0 ${size * 2}px ${isBlue ? '#93c5fd' : isPurple ? '#c4b5fd' : 'white'}` : 'none'
-                                }}
-                            />
-                        );
-                    })}
-                    {/* Large glowing stars */}
-                    {[[15, 10], [45, 5], [70, 15], [85, 8], [30, 3], [60, 18], [90, 12]].map(([x, y], i) => (
-                        <div key={`bigstar-${i}`} className="absolute animate-pulse"
-                            style={{
-                                left: `${x}%`, top: `${y}%`,
-                                width: 4, height: 4,
-                                backgroundColor: 'white',
-                                borderRadius: '50%',
-                                opacity: 0.9,
-                                animationDelay: `${i * 0.7}s`,
-                                boxShadow: '0 0 8px 2px rgba(255,255,255,0.6), 0 0 20px 4px rgba(165,243,252,0.3)'
-                            }}
-                        />
-                    ))}
-                    {/* Nebula clouds - purple/red tones for boss level */}
-                    <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_40%_at_20%_20%,rgba(109,40,217,0.12),transparent)]" />
-                    <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_30%_at_80%_15%,rgba(185,28,28,0.08),transparent)]" />
-                </div>
-            )}
-            {/* Moon & Stars (Hide in Factory and Level 5 where we use custom starfield) */}
-            {stage !== 3 && stage !== 5 && (
-                <>
-                    {/* Stars */}
-                    <div className="absolute inset-0"
-                        style={{
-                            backgroundImage: 'radial-gradient(1px 1px at 20px 30px, #eee, rgba(0,0,0,0)), radial-gradient(1px 1px at 40px 70px, #fff, rgba(0,0,0,0)), radial-gradient(2px 2px at 90px 40px, #ddd, rgba(0,0,0,0))',
-                            backgroundSize: '300px 300px'
-                        }}></div>
+                                    backgroundImage: 'radial-gradient(1px 1px at 20px 30px, #eee, rgba(0,0,0,0)), radial-gradient(1px 1px at 40px 70px, #fff, rgba(0,0,0,0)), radial-gradient(2px 2px at 90px 40px, #ddd, rgba(0,0,0,0))',
+                                    backgroundSize: '300px 300px'
+                                }}></div>
 
-                    {/* Moon */}
-                    <div className={`absolute top-10 right-20 w-16 h-16 rounded-full bg-yellow-100 shadow-[0_0_40px_rgba(255,255,200,0.3)] transition-all duration-1000 ${moonPhase === 'eclipse' ? 'shadow-[0_0_50px_rgba(255,0,0,0.5)] bg-red-900' : ''}`}></div>
-                </>
-            )}
+                            {/* Moon */}
+                            <div className={`absolute top-10 right-20 w-16 h-16 rounded-full bg-yellow-100 shadow-[0_0_40px_rgba(255,255,200,0.3)] transition-all duration-1000 ${moonPhase === 'eclipse' ? 'shadow-[0_0_50px_rgba(255,0,0,0.5)] bg-red-900' : ''}`}></div>
+                        </>
+                    )}
 
-            {/* Scrolling Parallax Mountains (Modify for Factory if needed, or hide) */}
-            {stage !== 3 && (
-                <div className="absolute bottom-0 w-[200%] h-1/2 opacity-30 pointer-events-none"
-                    style={{ transform: `translateX(${-cameraOffset * 0.05}px)` }}>
-                    <svg width="100%" height="100%" viewBox="0 0 1200 600" preserveAspectRatio="none">
-                        <path d="M0,600 L0,300 C150,250 300,50 450,200 C600,350 750,150 900,300 Q1050,450 1200,200 L1200,600 Z" fill="#1e293b" />
-                    </svg>
-                </div>
-            )}
+                    {/* Scrolling Parallax Mountains (Modify for Factory if needed, or hide) */}
+                    {stage !== 3 && (
+                        <div className="absolute bottom-0 w-[200%] h-1/2 opacity-30 pointer-events-none"
+                            style={{ transform: `translateX(${-cameraOffset * 0.05}px)` }}>
+                            <svg width="100%" height="100%" viewBox="0 0 1200 600" preserveAspectRatio="none">
+                                <path d="M0,600 L0,300 C150,250 300,50 450,200 C600,350 750,150 900,300 Q1050,450 1200,200 L1200,600 Z" fill="#1e293b" />
+                            </svg>
+                        </div>
+                    )}
 
-            <HUD
-                time={globalTime}
-                stage={stage}
-                stageName={stageConfig.name}
-                speed={Math.abs(bikes[0]?.velocityX || 0)}
-                progress={bikes[0]?.x || 0}
-                totalDistance={stageConfig.length}
-            />
+                    <HUD
+                        time={globalTime}
+                        stage={stage}
+                        stageName={stageConfig.name}
+                        speed={Math.abs(bikes[0]?.velocityX || 0)}
+                        progress={bikes[0]?.x || 0}
+                        totalDistance={stageConfig.length}
+                    />
 
-            {/* Game World Container */}
-            <div className="absolute inset-0 overflow-visible" style={{ transform: `translateX(${-cameraOffset}px)` }}>
+                    {/* Game World Container */}
+                    <div className="absolute inset-0 overflow-visible" style={{ transform: `translateX(${-cameraOffset}px)` }}>
 
-                {/* Terrain SVG */}
-                <div className="absolute top-0 left-0 pointer-events-none" style={{ width: stageConfig.length + 2000, height: '100%' }}>
-                    <svg width="100%" height="100%" className="overflow-visible">
-                        <defs>
-                            {/* Metal Beam Gradient */}
-                            <linearGradient id="metal-sheen" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#52525b" /> {/* Zinc-600 */}
-                                <stop offset="50%" stopColor="#a1a1aa" /> {/* Zinc-400 */}
-                                <stop offset="100%" stopColor="#52525b" />
-                            </linearGradient>
-                            {/* Steel Rods Pattern */}
-                            <pattern id="steel-rods" x="0" y="0" width="40" height="20" patternUnits="userSpaceOnUse">
-                                {/* Dark Gap */}
-                                <rect width="40" height="20" fill="#09090b" />
-                                {/* The Rod/Beam (Thinner than full height to show gap) */}
-                                <rect y="2" width="40" height="16" fill="url(#metal-sheen)" rx="2" />
-                            </pattern>
-                        </defs>
-
-                        {/* Dynamic Terrain Colors */}
-                        <path d={getTerrainPath()}
-                            fill="#f1f5f9" // Snow
-                            stroke="#bfdbfe" // Ice
-                            strokeWidth="4" />
-                        <path d={getTerrainPath(20)}
-                            fill="#cbd5e1" // Ice Shadow
-                            fillOpacity={'0.5'} />
-                    </svg>
-                </div>
-
-                {/* Obstacles (Ice/Snow theme) */}
-                {obstacles.map(obs => (
-                    <div key={obs.id} className="absolute" style={{
-                        left: obs.x, top: obs.y, width: obs.width, height: obs.height,
-                        transformOrigin: 'bottom center',
-                        transform: `rotate(${obs.rotation}rad)`
-                    }}>
-
-                        {/* ICE SPIKE */}
-                        {obs.type === 'spike' && (
-                            <svg width="100%" height="100%" viewBox="0 0 40 40" preserveAspectRatio="none">
+                        {/* Terrain SVG — multi-layer rich ice/snow */}
+                        <div className="absolute top-0 left-0 pointer-events-none" style={{ width: stageConfig.length + 2000, height: '100%' }}>
+                            <svg width="100%" height="100%" className="overflow-visible">
                                 <defs>
-                                    <linearGradient id="spikeGrad" x1="0" y1="0" x2="1" y2="1">
-                                        <stop offset="0%" stopColor="#a5f3fc" />
-                                        <stop offset="100%" stopColor="#0284c7" />
+                                    {/* Deep ice bedrock gradient */}
+                                    <linearGradient id="terrainBedrock" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#0c4a6e" />
+                                        <stop offset="40%" stopColor="#1e3a5f" />
+                                        <stop offset="100%" stopColor="#0a1628" />
                                     </linearGradient>
-                                </defs>
-                                {/* Main spike */}
-                                <polygon points="20,0 0,40 40,40" fill="url(#spikeGrad)" stroke="#7dd3fc" strokeWidth="1.5" />
-                                {/* Highlight shine */}
-                                <polygon points="20,0 10,40 20,35" fill="white" opacity="0.3" />
-                                {/* Side mini spikes */}
-                                <polygon points="5,40 0,25 12,40" fill="#7dd3fc" opacity="0.7" />
-                                <polygon points="35,40 40,25 28,40" fill="#7dd3fc" opacity="0.7" />
-                            </svg>
-                        )}
-
-                        {/* BOULDER / ROCK */}
-                        {obs.type === 'rock' && (
-                            <svg width="100%" height="100%" viewBox="0 0 60 50" preserveAspectRatio="none">
-                                <defs>
-                                    <radialGradient id="rockGrad" cx="35%" cy="30%" r="60%">
-                                        <stop offset="0%" stopColor="#94a3b8" />
-                                        <stop offset="100%" stopColor="#334155" />
-                                    </radialGradient>
-                                </defs>
-                                <ellipse cx="30" cy="30" rx="28" ry="18" fill="url(#rockGrad)" stroke="#475569" strokeWidth="2" />
-                                {/* Cracks */}
-                                <path d="M20,18 L28,30 L22,42" stroke="#1e293b" strokeWidth="1.5" fill="none" opacity="0.6" />
-                                <path d="M35,20 L40,32" stroke="#1e293b" strokeWidth="1" fill="none" opacity="0.5" />
-                                {/* Ice glaze on top */}
-                                <ellipse cx="30" cy="18" rx="18" ry="5" fill="#bae6fd" opacity="0.3" />
-                                {/* Highlight */}
-                                <ellipse cx="22" cy="22" rx="7" ry="4" fill="white" opacity="0.15" />
-                            </svg>
-                        )}
-
-                        {/* RAMP */}
-                        {obs.type === 'ramp' && (
-                            <svg width="100%" height="100%" viewBox="0 0 80 60" preserveAspectRatio="none">
-                                <defs>
-                                    <linearGradient id="rampGrad" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#e2e8f0" />
-                                        <stop offset="100%" stopColor="#94a3b8" />
+                                    {/* Snow surface gradient */}
+                                    <linearGradient id="terrainSnow" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#f0f9ff" />
+                                        <stop offset="15%" stopColor="#e0f2fe" />
+                                        <stop offset="50%" stopColor="#bae6fd" />
+                                        <stop offset="100%" stopColor="#075985" />
                                     </linearGradient>
-                                </defs>
-                                <polygon points="80,0 0,60 80,60" fill="url(#rampGrad)" stroke="#bfdbfe" strokeWidth="2" />
-                                {/* Surface stripes */}
-                                <line x1="60" y1="8" x2="80" y2="8" stroke="white" strokeWidth="2" opacity="0.4" />
-                                <line x1="40" y1="23" x2="80" y2="23" stroke="white" strokeWidth="2" opacity="0.4" />
-                                <line x1="20" y1="38" x2="80" y2="38" stroke="white" strokeWidth="2" opacity="0.4" />
-                                {/* Ice shine on edge */}
-                                <polygon points="80,0 72,0 80,8" fill="#7dd3fc" opacity="0.5" />
-                            </svg>
-                        )}
-
-                        {obs.type === 'frozen-probe' && (
-                            <div className="w-full h-full opacity-60" style={{ transform: `rotate(${obs.rotation}rad)` }}>
-                                <div className="absolute bottom-0 w-full h-3 bg-blue-900 rounded-full"></div>
-                                <div className="absolute bottom-3 left-2 w-8 h-4 bg-slate-700 skew-x-[-20deg]"></div>
-                                <div className="absolute bottom-0 left-0 w-full h-full bg-cyan-500/30 mix-blend-overlay"></div>
-                            </div>
-                        )}
-                        {obs.type === 'heat-vent' && (
-                            <div className="w-full h-full bg-gradient-to-b from-slate-700 to-slate-900 border-x-2 border-slate-600 flex flex-col items-center justify-end relative">
-                                <div className="w-full h-1 bg-black/50 mb-1"></div>
-                                <div className="w-full h-1 bg-black/50 mb-1"></div>
-                                <div className="w-full h-1 bg-black/50 mb-1"></div>
-                                <div className="absolute bottom-0 w-3/4 h-2 bg-orange-500 blur-sm animate-pulse"></div>
-                                <div className="absolute -top-10 w-2 h-10 bg-white/20 blur-md animate-ping"></div>
-                            </div>
-                        )}
-                        {obs.type === 'lava-can' && (
-                            <div className="w-full h-full bg-slate-800 border-2 border-yellow-500 rounded-lg flex flex-col items-center justify-center relative overflow-hidden shadow-lg">
-                                <div className="absolute inset-0 bg-[repeating-linear-gradient(45deg,#000,#000_10px,#334155_10px,#334155_20px)] opacity-40"></div>
-                                <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center z-10 border border-yellow-500">
-                                    <span className="text-yellow-500 text-xs font-black">⚠</span>
-                                </div>
-                                <div className="absolute bottom-0 w-full h-1 bg-green-500 animate-pulse shadow-[0_0_10px_#22c55e]"></div>
-                            </div>
-                        )}
-                        {obs.type === 'lava-pit' && (
-                            <div className="w-full h-full bg-orange-600/20 border-b-4 border-red-600 relative overflow-hidden">
-                                <div className="absolute inset-0 bg-orange-600 blur-md opacity-50 animate-pulse"></div>
-                            </div>
-                        )}
-                        {obs.type === 'magnetic-coil' && (
-                            <div className="w-full h-full bg-purple-900/50 rounded-full border-4 border-purple-500 flex items-center justify-center">
-                                <div className="w-3/4 h-3/4 border-2 border-purple-300 rounded-full border-dashed"></div>
-                                <div className="absolute inset-0 bg-purple-500/20 blur-xl animate-pulse"></div>
-                            </div>
-                        )}
-                    </div>
-                ))}
-
-                {/* Enemies (Bears) */}
-                {enemies.map(enemy => (
-                    <div key={enemy.id} className="absolute" style={{ left: enemy.x, top: enemy.y, width: enemy.width, height: enemy.height }}>
-                        {enemy.type === 'bear' && (
-                            <div className="w-full h-full relative" style={{ transformOrigin: 'bottom center', transform: `rotate(${enemy.rotation || 0}rad) scaleX(${-enemy.direction})` }}>
-                                <svg width="100%" height="100%" viewBox="0 0 100 65" preserveAspectRatio="none">
-                                    <defs>
-                                        <radialGradient id="bearFur" cx="40%" cy="30%" r="70%">
-                                            <stop offset="0%" stopColor="#f1f5f9" />
-                                            <stop offset="100%" stopColor="#cbd5e1" />
-                                        </radialGradient>
-                                        <radialGradient id="bearHead" cx="40%" cy="35%" r="60%">
-                                            <stop offset="0%" stopColor="#f8fafc" />
-                                            <stop offset="100%" stopColor="#e2e8f0" />
-                                        </radialGradient>
-                                    </defs>
-                                    {/* Shadow beneath */}
-                                    <ellipse cx="50" cy="63" rx="40" ry="4" fill="black" opacity="0.2" />
-                                    {/* Back legs */}
-                                    <path d="M8,42 Q3,56 9,63 L22,63 Q28,52 23,42 Z" fill="#cbd5e1" />
-                                    <path d="M72,42 Q67,56 73,63 L86,63 Q92,52 87,42 Z" fill="#cbd5e1" />
-                                    {/* Body */}
-                                    <ellipse cx="48" cy="32" rx="44" ry="26" fill="url(#bearFur)" />
-                                    {/* Belly lighter patch */}
-                                    <ellipse cx="48" cy="38" rx="26" ry="14" fill="#f8fafc" opacity="0.6" />
-                                    {/* Front legs */}
-                                    <path d="M14,42 Q9,56 15,63 L28,63 Q34,52 29,42 Z" fill="#e2e8f0" />
-                                    <path d="M66,42 Q61,56 67,63 L80,63 Q86,52 81,42 Z" fill="#e2e8f0" />
-                                    {/* Claws on front legs */}
-                                    <path d="M10,62 L14,65 M15,63 L18,66 M20,63 L22,66" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" />
-                                    <path d="M63,62 L66,65 M68,63 L71,66 M73,63 L75,66" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" />
-                                    {/* Head */}
-                                    <circle cx="83" cy="20" r="15" fill="url(#bearHead)" />
-                                    {/* Ears */}
-                                    <circle cx="76" cy="8" r="6" fill="#e2e8f0" />
-                                    <circle cx="76" cy="8" r="3" fill="#fda4af" />
-                                    <circle cx="91" cy="7" r="5" fill="#e2e8f0" />
-                                    <circle cx="91" cy="7" r="2.5" fill="#fda4af" />
-                                    {/* Snout */}
-                                    <ellipse cx="93" cy="24" rx="7" ry="5" fill="#e2e8f0" />
-                                    <ellipse cx="94" cy="22" rx="3" ry="2" fill="#64748b" />
-                                    {/* Nostrils */}
-                                    <circle cx="92" cy="22" r="1" fill="black" />
-                                    <circle cx="96" cy="22" r="1" fill="black" />
-                                    {/* Eye - angry red glow */}
-                                    <circle cx="87" cy="17" r="3.5" fill="#1e293b" />
-                                    <circle cx="87" cy="17" r="2" fill="#ef4444" />
-                                    <circle cx="88" cy="16" r="0.8" fill="white" opacity="0.7" />
-                                    {/* Mouth line */}
-                                    <path d="M89,27 Q93,30 97,27" stroke="#475569" strokeWidth="1" fill="none" />
-                                    {/* Fur texture lines */}
-                                    <path d="M20,20 Q24,16 28,20" stroke="#cbd5e1" strokeWidth="1" fill="none" opacity="0.7" />
-                                    <path d="M30,15 Q34,11 38,15" stroke="#cbd5e1" strokeWidth="1" fill="none" opacity="0.6" />
-                                    <path d="M10,28 Q14,24 18,28" stroke="#cbd5e1" strokeWidth="1" fill="none" opacity="0.5" />
-                                </svg>
-                            </div>
-                        )}
-                    </div>
-                ))}
-
-                {/* Boss (Level 5) — Frost Dragon King */}
-                {boss.active && (
-                    <div className="absolute" style={{ left: boss.x, top: boss.y, width: 220, height: 200 }}>
-                        <div className="w-full h-full relative animate-float">
-                            <svg width="100%" height="100%" viewBox="0 0 220 200" className="drop-shadow-[0_0_30px_rgba(99,102,241,0.8)]">
-                                <defs>
-                                    <radialGradient id="bossGlow" cx="50%" cy="40%" r="60%">
-                                        <stop offset="0%" stopColor="#c7d2fe" />
-                                        <stop offset="100%" stopColor="#312e81" />
-                                    </radialGradient>
-                                    <radialGradient id="bossEye" cx="30%" cy="30%" r="70%">
-                                        <stop offset="0%" stopColor="#a78bfa" />
-                                        <stop offset="60%" stopColor="#7c3aed" />
-                                        <stop offset="100%" stopColor="#1e1b4b" />
-                                    </radialGradient>
-                                    <filter id="iceGlow">
-                                        <feGaussianBlur stdDeviation="3" result="blur" />
-                                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                                    {/* Ice cap sheen — thin top layer */}
+                                    <linearGradient id="terrainIceCap" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#ffffff" stopOpacity="0.9" />
+                                        <stop offset="100%" stopColor="#bae6fd" stopOpacity="0" />
+                                    </linearGradient>
+                                    {/* Specular gloss ribbon */}
+                                    <linearGradient id="terrainGloss" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#ffffff" stopOpacity="0.6" />
+                                        <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+                                    </linearGradient>
+                                    {/* Subtle shimmer pattern */}
+                                    <pattern id="iceShimmer" x="0" y="0" width="120" height="8" patternUnits="userSpaceOnUse">
+                                        <line x1="0" y1="4" x2="120" y2="4" stroke="white" strokeWidth="0.5" strokeOpacity="0.15" />
+                                        <ellipse cx="50" cy="4" rx="20" ry="1.5" fill="white" fillOpacity="0.12" />
+                                        <ellipse cx="100" cy="4" rx="14" ry="1" fill="white" fillOpacity="0.08" />
+                                    </pattern>
+                                    {/* Drop shadow filter */}
+                                    <filter id="terrainShadow" x="-5%" y="-20%" width="110%" height="150%">
+                                        <feDropShadow dx="0" dy="-4" stdDeviation="6" floodColor="#0ea5e9" floodOpacity="0.35" />
                                     </filter>
                                 </defs>
 
-                                {/* Wing left — spread wide */}
-                                <path d="M50,80 Q0,30 10,5 Q40,10 60,50 Q70,65 65,80 Z" fill="#c7d2fe" stroke="#818cf8" strokeWidth="1.5" opacity="0.9" />
-                                {/* Wing right */}
-                                <path d="M170,80 Q220,30 210,5 Q180,10 160,50 Q150,65 155,80 Z" fill="#c7d2fe" stroke="#818cf8" strokeWidth="1.5" opacity="0.9" />
-                                {/* Wing membrane lines */}
-                                <path d="M52,78 Q25,40 15,10" stroke="#6366f1" strokeWidth="1" fill="none" opacity="0.5" />
-                                <path d="M58,76 Q40,45 25,15" stroke="#6366f1" strokeWidth="1" fill="none" opacity="0.5" />
-                                <path d="M168,78 Q195,40 205,10" stroke="#6366f1" strokeWidth="1" fill="none" opacity="0.5" />
-                                <path d="M162,76 Q180,45 195,15" stroke="#6366f1" strokeWidth="1" fill="none" opacity="0.5" />
+                                {/* Layer 1: Deep bedrock / ice core (deepest, darkest) */}
+                                <path d={getTerrainPathSmooth(28)}
+                                    fill="url(#terrainBedrock)"
+                                    opacity="1" />
 
-                                {/* Tail */}
-                                <path d="M100,180 Q60,200 40,190 Q70,175 80,165" fill="#818cf8" stroke="#6366f1" strokeWidth="1" />
-                                <path d="M120,180 Q160,200 180,190 Q150,175 140,165" fill="#818cf8" stroke="#6366f1" strokeWidth="1" />
+                                {/* Layer 2: Main snow/ice body */}
+                                <path d={getTerrainPathSmooth(0)}
+                                    fill="url(#terrainSnow)"
+                                    filter="url(#terrainShadow)" />
 
-                                {/* Body */}
-                                <ellipse cx="110" cy="115" rx="65" ry="70" fill="url(#bossGlow)" stroke="#818cf8" strokeWidth="3" />
-                                {/* Belly scales */}
-                                <ellipse cx="110" cy="130" rx="40" ry="45" fill="#e0e7ff" opacity="0.25" />
-                                <path d="M80,100 Q110,120 140,100" fill="none" stroke="#a5b4fc" strokeWidth="2" opacity="0.5" />
-                                <path d="M75,115 Q110,135 145,115" fill="none" stroke="#a5b4fc" strokeWidth="2" opacity="0.5" />
-                                <path d="M80,130 Q110,148 140,130" fill="none" stroke="#a5b4fc" strokeWidth="2" opacity="0.5" />
+                                {/* Layer 3: Sub-surface blue tint (gives ice depth) */}
+                                <path d={getTerrainPathSmooth(0)}
+                                    fill="#0ea5e9"
+                                    fillOpacity="0.06" />
 
-                                {/* Neck */}
-                                <path d="M75,65 Q110,55 145,65 L140,80 Q110,72 80,80 Z" fill="#4338ca" stroke="#6366f1" strokeWidth="1" />
+                                {/* Layer 4: Ice shimmer pattern over surface */}
+                                <path d={getTerrainPathSmooth(0)}
+                                    fill="url(#iceShimmer)"
+                                    fillOpacity="1" />
 
-                                {/* Head */}
-                                <ellipse cx="110" cy="45" rx="42" ry="35" fill="#312e81" stroke="#6366f1" strokeWidth="2.5" />
-                                {/* Head scales / texture */}
-                                <path d="M80,35 Q95,28 110,35" fill="none" stroke="#4338ca" strokeWidth="1.5" />
-                                <path d="M110,35 Q125,28 140,35" fill="none" stroke="#4338ca" strokeWidth="1.5" />
+                                {/* Layer 5: Specular gloss ribbon — top 18px of terrain */}
+                                <path d={getTerrainSurfaceStrip(0, 18)}
+                                    fill="url(#terrainGloss)"
+                                    opacity="0.55" />
 
-                                {/* Horns */}
-                                <path d="M88,20 L78,0 L96,18" fill="#c7d2fe" stroke="#818cf8" strokeWidth="1" />
-                                <path d="M132,20 L142,0 L124,18" fill="#c7d2fe" stroke="#818cf8" strokeWidth="1" />
-                                {/* Horn glow tips */}
-                                <circle cx="78" cy="0" r="3" fill="#a5f3fc" opacity="0.9" />
-                                <circle cx="142" cy="0" r="3" fill="#a5f3fc" opacity="0.9" />
+                                {/* Layer 6: Bright snow-cap outline with soft glow */}
+                                <path d={getTerrainSurfaceLine(0)}
+                                    fill="none"
+                                    stroke="#e0f9ff"
+                                    strokeWidth="3.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    opacity="0.9" />
 
-                                {/* Left eye */}
-                                <circle cx="92" cy="42" r="13" fill="#1e1b4b" />
-                                <circle cx="92" cy="42" r="9" fill="url(#bossEye)" />
-                                <circle cx="92" cy="42" r="4" fill="#7c3aed" />
-                                <circle cx="89" cy="39" r="2.5" fill="white" opacity="0.5" />
-                                {/* Right eye */}
-                                <circle cx="128" cy="42" r="13" fill="#1e1b4b" />
-                                <circle cx="128" cy="42" r="9" fill="url(#bossEye)" />
-                                <circle cx="128" cy="42" r="4" fill="#7c3aed" />
-                                <circle cx="125" cy="39" r="2.5" fill="white" opacity="0.5" />
-
-                                {/* Jaw / Mouth */}
-                                <path d="M85,60 Q110,75 135,60" stroke="#4338ca" strokeWidth="2" fill="none" />
-                                {/* Teeth */}
-                                <path d="M90,60 L87,68 L93,60" fill="#e0e7ff" />
-                                <path d="M105,62 L103,70 L108,62" fill="#e0e7ff" />
-                                <path d="M120,62 L118,70 L123,62" fill="#e0e7ff" />
-                                <path d="M130,60 L128,68 L133,60" fill="#e0e7ff" />
-
-                                {/* Ice breath glow from mouth */}
-                                <ellipse cx="110" cy="68" rx="15" ry="6" fill="#a5f3fc" opacity="0.3" filter="url(#iceGlow)" />
-
-                                {/* Claws / feet */}
-                                <path d="M70,175 L60,188 M75,177 L68,192 M80,178 L76,193" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" />
-                                <path d="M150,175 L160,188 M145,177 L152,192 M140,178 L144,193" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" />
+                                {/* Layer 7: Inner blue ice edge line */}
+                                <path d={getTerrainSurfaceLine(3)}
+                                    fill="none"
+                                    stroke="#7dd3fc"
+                                    strokeWidth="1.5"
+                                    strokeLinecap="round"
+                                    opacity="0.5" />
                             </svg>
+                        </div>
 
-                            {/* Mouth glow emitter */}
-                            <div className="absolute" style={{ top: 68, left: 100, width: 20, height: 8 }}>
-                                <div className="w-full h-full bg-cyan-300 blur-sm animate-pulse opacity-60"></div>
+                        {/* Obstacles (Ice/Snow theme) */}
+                        {obstacles.map(obs => (
+                            <div key={obs.id} className="absolute" style={{
+                                left: obs.x, top: obs.y, width: obs.width, height: obs.height,
+                                transformOrigin: 'bottom center',
+                                transform: `rotate(${obs.rotation}rad)`
+                            }}>
+
+                                {/* ICE SPIKE */}
+                                {obs.type === 'spike' && (
+                                    <svg width="100%" height="100%" viewBox="0 0 40 40" preserveAspectRatio="none">
+                                        <defs>
+                                            <linearGradient id="spikeGrad" x1="0" y1="0" x2="1" y2="1">
+                                                <stop offset="0%" stopColor="#a5f3fc" />
+                                                <stop offset="100%" stopColor="#0284c7" />
+                                            </linearGradient>
+                                        </defs>
+                                        {/* Main spike */}
+                                        <polygon points="20,0 0,40 40,40" fill="url(#spikeGrad)" stroke="#7dd3fc" strokeWidth="1.5" />
+                                        {/* Highlight shine */}
+                                        <polygon points="20,0 10,40 20,35" fill="white" opacity="0.3" />
+                                        {/* Side mini spikes */}
+                                        <polygon points="5,40 0,25 12,40" fill="#7dd3fc" opacity="0.7" />
+                                        <polygon points="35,40 40,25 28,40" fill="#7dd3fc" opacity="0.7" />
+                                    </svg>
+                                )}
+
+                                {/* BOULDER / ROCK */}
+                                {obs.type === 'rock' && (
+                                    <svg width="100%" height="100%" viewBox="0 0 60 50" preserveAspectRatio="none">
+                                        <defs>
+                                            <radialGradient id="rockGrad" cx="35%" cy="30%" r="60%">
+                                                <stop offset="0%" stopColor="#94a3b8" />
+                                                <stop offset="100%" stopColor="#334155" />
+                                            </radialGradient>
+                                        </defs>
+                                        <ellipse cx="30" cy="30" rx="28" ry="18" fill="url(#rockGrad)" stroke="#475569" strokeWidth="2" />
+                                        {/* Cracks */}
+                                        <path d="M20,18 L28,30 L22,42" stroke="#1e293b" strokeWidth="1.5" fill="none" opacity="0.6" />
+                                        <path d="M35,20 L40,32" stroke="#1e293b" strokeWidth="1" fill="none" opacity="0.5" />
+                                        {/* Ice glaze on top */}
+                                        <ellipse cx="30" cy="18" rx="18" ry="5" fill="#bae6fd" opacity="0.3" />
+                                        {/* Highlight */}
+                                        <ellipse cx="22" cy="22" rx="7" ry="4" fill="white" opacity="0.15" />
+                                    </svg>
+                                )}
+
+                                {/* RAMP */}
+                                {obs.type === 'ramp' && (
+                                    <svg width="100%" height="100%" viewBox="0 0 80 60" preserveAspectRatio="none">
+                                        <defs>
+                                            <linearGradient id="rampGrad" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor="#e2e8f0" />
+                                                <stop offset="100%" stopColor="#94a3b8" />
+                                            </linearGradient>
+                                        </defs>
+                                        <polygon points="80,0 0,60 80,60" fill="url(#rampGrad)" stroke="#bfdbfe" strokeWidth="2" />
+                                        {/* Surface stripes */}
+                                        <line x1="60" y1="8" x2="80" y2="8" stroke="white" strokeWidth="2" opacity="0.4" />
+                                        <line x1="40" y1="23" x2="80" y2="23" stroke="white" strokeWidth="2" opacity="0.4" />
+                                        <line x1="20" y1="38" x2="80" y2="38" stroke="white" strokeWidth="2" opacity="0.4" />
+                                        {/* Ice shine on edge */}
+                                        <polygon points="80,0 72,0 80,8" fill="#7dd3fc" opacity="0.5" />
+                                    </svg>
+                                )}
+
+                                {obs.type === 'frozen-probe' && (
+                                    <div className="w-full h-full opacity-60" style={{ transform: `rotate(${obs.rotation}rad)` }}>
+                                        <div className="absolute bottom-0 w-full h-3 bg-blue-900 rounded-full"></div>
+                                        <div className="absolute bottom-3 left-2 w-8 h-4 bg-slate-700 skew-x-[-20deg]"></div>
+                                        <div className="absolute bottom-0 left-0 w-full h-full bg-cyan-500/30 mix-blend-overlay"></div>
+                                    </div>
+                                )}
+                                {obs.type === 'heat-vent' && (
+                                    <div className="w-full h-full bg-gradient-to-b from-slate-700 to-slate-900 border-x-2 border-slate-600 flex flex-col items-center justify-end relative">
+                                        <div className="w-full h-1 bg-black/50 mb-1"></div>
+                                        <div className="w-full h-1 bg-black/50 mb-1"></div>
+                                        <div className="w-full h-1 bg-black/50 mb-1"></div>
+                                        <div className="absolute bottom-0 w-3/4 h-2 bg-orange-500 blur-sm animate-pulse"></div>
+                                        <div className="absolute -top-10 w-2 h-10 bg-white/20 blur-md animate-ping"></div>
+                                    </div>
+                                )}
+                                {obs.type === 'lava-can' && (
+                                    <div className="w-full h-full bg-slate-800 border-2 border-yellow-500 rounded-lg flex flex-col items-center justify-center relative overflow-hidden shadow-lg">
+                                        <div className="absolute inset-0 bg-[repeating-linear-gradient(45deg,#000,#000_10px,#334155_10px,#334155_20px)] opacity-40"></div>
+                                        <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center z-10 border border-yellow-500">
+                                            <span className="text-yellow-500 text-xs font-black">⚠</span>
+                                        </div>
+                                        <div className="absolute bottom-0 w-full h-1 bg-green-500 animate-pulse shadow-[0_0_10px_#22c55e]"></div>
+                                    </div>
+                                )}
+                                {obs.type === 'lava-pit' && (
+                                    <div className="w-full h-full bg-orange-600/20 border-b-4 border-red-600 relative overflow-hidden">
+                                        <div className="absolute inset-0 bg-orange-600 blur-md opacity-50 animate-pulse"></div>
+                                    </div>
+                                )}
+                                {obs.type === 'magnetic-coil' && (
+                                    <div className="w-full h-full bg-purple-900/50 rounded-full border-4 border-purple-500 flex items-center justify-center">
+                                        <div className="w-3/4 h-3/4 border-2 border-purple-300 rounded-full border-dashed"></div>
+                                        <div className="absolute inset-0 bg-purple-500/20 blur-xl animate-pulse"></div>
+                                    </div>
+                                )}
                             </div>
+                        ))}
 
-                            {/* Health Bar */}
-                            <div className="absolute -top-14 left-0 w-full">
-                                <div className="text-center text-xs font-bold text-purple-300 mb-1 tracking-widest">FROST KING</div>
-                                <div className="h-4 bg-gray-900 border-2 border-purple-500 rounded-full overflow-hidden shadow-[0_0_10px_rgba(139,92,246,0.5)]">
-                                    <div className="h-full bg-gradient-to-r from-purple-700 via-indigo-500 to-cyan-400 transition-all duration-200" style={{ width: `${boss.health}%` }}></div>
+                        {/* Enemies (Bears) */}
+                        {enemies.map(enemy => (
+                            <div key={enemy.id} className="absolute" style={{ left: enemy.x, top: enemy.y, width: enemy.width, height: enemy.height }}>
+                                {enemy.type === 'bear' && (
+                                    <div className="w-full h-full relative" style={{ transformOrigin: 'bottom center', transform: `rotate(${enemy.rotation || 0}rad) scaleX(${-enemy.direction})` }}>
+                                        <svg width="100%" height="100%" viewBox="0 0 100 65" preserveAspectRatio="none">
+                                            <defs>
+                                                <radialGradient id="bearFur" cx="40%" cy="30%" r="70%">
+                                                    <stop offset="0%" stopColor="#f1f5f9" />
+                                                    <stop offset="100%" stopColor="#cbd5e1" />
+                                                </radialGradient>
+                                                <radialGradient id="bearHead" cx="40%" cy="35%" r="60%">
+                                                    <stop offset="0%" stopColor="#f8fafc" />
+                                                    <stop offset="100%" stopColor="#e2e8f0" />
+                                                </radialGradient>
+                                            </defs>
+                                            {/* Shadow beneath */}
+                                            <ellipse cx="50" cy="63" rx="40" ry="4" fill="black" opacity="0.2" />
+                                            {/* Back legs */}
+                                            <path d="M8,42 Q3,56 9,63 L22,63 Q28,52 23,42 Z" fill="#cbd5e1" />
+                                            <path d="M72,42 Q67,56 73,63 L86,63 Q92,52 87,42 Z" fill="#cbd5e1" />
+                                            {/* Body */}
+                                            <ellipse cx="48" cy="32" rx="44" ry="26" fill="url(#bearFur)" />
+                                            {/* Belly lighter patch */}
+                                            <ellipse cx="48" cy="38" rx="26" ry="14" fill="#f8fafc" opacity="0.6" />
+                                            {/* Front legs */}
+                                            <path d="M14,42 Q9,56 15,63 L28,63 Q34,52 29,42 Z" fill="#e2e8f0" />
+                                            <path d="M66,42 Q61,56 67,63 L80,63 Q86,52 81,42 Z" fill="#e2e8f0" />
+                                            {/* Claws on front legs */}
+                                            <path d="M10,62 L14,65 M15,63 L18,66 M20,63 L22,66" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" />
+                                            <path d="M63,62 L66,65 M68,63 L71,66 M73,63 L75,66" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" />
+                                            {/* Head */}
+                                            <circle cx="83" cy="20" r="15" fill="url(#bearHead)" />
+                                            {/* Ears */}
+                                            <circle cx="76" cy="8" r="6" fill="#e2e8f0" />
+                                            <circle cx="76" cy="8" r="3" fill="#fda4af" />
+                                            <circle cx="91" cy="7" r="5" fill="#e2e8f0" />
+                                            <circle cx="91" cy="7" r="2.5" fill="#fda4af" />
+                                            {/* Snout */}
+                                            <ellipse cx="93" cy="24" rx="7" ry="5" fill="#e2e8f0" />
+                                            <ellipse cx="94" cy="22" rx="3" ry="2" fill="#64748b" />
+                                            {/* Nostrils */}
+                                            <circle cx="92" cy="22" r="1" fill="black" />
+                                            <circle cx="96" cy="22" r="1" fill="black" />
+                                            {/* Eye - angry red glow */}
+                                            <circle cx="87" cy="17" r="3.5" fill="#1e293b" />
+                                            <circle cx="87" cy="17" r="2" fill="#ef4444" />
+                                            <circle cx="88" cy="16" r="0.8" fill="white" opacity="0.7" />
+                                            {/* Mouth line */}
+                                            <path d="M89,27 Q93,30 97,27" stroke="#475569" strokeWidth="1" fill="none" />
+                                            {/* Fur texture lines */}
+                                            <path d="M20,20 Q24,16 28,20" stroke="#cbd5e1" strokeWidth="1" fill="none" opacity="0.7" />
+                                            <path d="M30,15 Q34,11 38,15" stroke="#cbd5e1" strokeWidth="1" fill="none" opacity="0.6" />
+                                            <path d="M10,28 Q14,24 18,28" stroke="#cbd5e1" strokeWidth="1" fill="none" opacity="0.5" />
+                                        </svg>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+
+                        {/* Boss (Level 5) — Frost Dragon King */}
+                        {boss.active && (
+                            <div className="absolute" style={{ left: boss.x, top: boss.y, width: 220, height: 200 }}>
+                                <div className="w-full h-full relative animate-float">
+                                    <svg width="100%" height="100%" viewBox="0 0 220 200" className="drop-shadow-[0_0_30px_rgba(99,102,241,0.8)]">
+                                        <defs>
+                                            <radialGradient id="bossGlow" cx="50%" cy="40%" r="60%">
+                                                <stop offset="0%" stopColor="#c7d2fe" />
+                                                <stop offset="100%" stopColor="#312e81" />
+                                            </radialGradient>
+                                            <radialGradient id="bossEye" cx="30%" cy="30%" r="70%">
+                                                <stop offset="0%" stopColor="#a78bfa" />
+                                                <stop offset="60%" stopColor="#7c3aed" />
+                                                <stop offset="100%" stopColor="#1e1b4b" />
+                                            </radialGradient>
+                                            <filter id="iceGlow">
+                                                <feGaussianBlur stdDeviation="3" result="blur" />
+                                                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                                            </filter>
+                                        </defs>
+
+                                        {/* Wing left — spread wide */}
+                                        <path d="M50,80 Q0,30 10,5 Q40,10 60,50 Q70,65 65,80 Z" fill="#c7d2fe" stroke="#818cf8" strokeWidth="1.5" opacity="0.9" />
+                                        {/* Wing right */}
+                                        <path d="M170,80 Q220,30 210,5 Q180,10 160,50 Q150,65 155,80 Z" fill="#c7d2fe" stroke="#818cf8" strokeWidth="1.5" opacity="0.9" />
+                                        {/* Wing membrane lines */}
+                                        <path d="M52,78 Q25,40 15,10" stroke="#6366f1" strokeWidth="1" fill="none" opacity="0.5" />
+                                        <path d="M58,76 Q40,45 25,15" stroke="#6366f1" strokeWidth="1" fill="none" opacity="0.5" />
+                                        <path d="M168,78 Q195,40 205,10" stroke="#6366f1" strokeWidth="1" fill="none" opacity="0.5" />
+                                        <path d="M162,76 Q180,45 195,15" stroke="#6366f1" strokeWidth="1" fill="none" opacity="0.5" />
+
+                                        {/* Tail */}
+                                        <path d="M100,180 Q60,200 40,190 Q70,175 80,165" fill="#818cf8" stroke="#6366f1" strokeWidth="1" />
+                                        <path d="M120,180 Q160,200 180,190 Q150,175 140,165" fill="#818cf8" stroke="#6366f1" strokeWidth="1" />
+
+                                        {/* Body */}
+                                        <ellipse cx="110" cy="115" rx="65" ry="70" fill="url(#bossGlow)" stroke="#818cf8" strokeWidth="3" />
+                                        {/* Belly scales */}
+                                        <ellipse cx="110" cy="130" rx="40" ry="45" fill="#e0e7ff" opacity="0.25" />
+                                        <path d="M80,100 Q110,120 140,100" fill="none" stroke="#a5b4fc" strokeWidth="2" opacity="0.5" />
+                                        <path d="M75,115 Q110,135 145,115" fill="none" stroke="#a5b4fc" strokeWidth="2" opacity="0.5" />
+                                        <path d="M80,130 Q110,148 140,130" fill="none" stroke="#a5b4fc" strokeWidth="2" opacity="0.5" />
+
+                                        {/* Neck */}
+                                        <path d="M75,65 Q110,55 145,65 L140,80 Q110,72 80,80 Z" fill="#4338ca" stroke="#6366f1" strokeWidth="1" />
+
+                                        {/* Head */}
+                                        <ellipse cx="110" cy="45" rx="42" ry="35" fill="#312e81" stroke="#6366f1" strokeWidth="2.5" />
+                                        {/* Head scales / texture */}
+                                        <path d="M80,35 Q95,28 110,35" fill="none" stroke="#4338ca" strokeWidth="1.5" />
+                                        <path d="M110,35 Q125,28 140,35" fill="none" stroke="#4338ca" strokeWidth="1.5" />
+
+                                        {/* Horns */}
+                                        <path d="M88,20 L78,0 L96,18" fill="#c7d2fe" stroke="#818cf8" strokeWidth="1" />
+                                        <path d="M132,20 L142,0 L124,18" fill="#c7d2fe" stroke="#818cf8" strokeWidth="1" />
+                                        {/* Horn glow tips */}
+                                        <circle cx="78" cy="0" r="3" fill="#a5f3fc" opacity="0.9" />
+                                        <circle cx="142" cy="0" r="3" fill="#a5f3fc" opacity="0.9" />
+
+                                        {/* Left eye */}
+                                        <circle cx="92" cy="42" r="13" fill="#1e1b4b" />
+                                        <circle cx="92" cy="42" r="9" fill="url(#bossEye)" />
+                                        <circle cx="92" cy="42" r="4" fill="#7c3aed" />
+                                        <circle cx="89" cy="39" r="2.5" fill="white" opacity="0.5" />
+                                        {/* Right eye */}
+                                        <circle cx="128" cy="42" r="13" fill="#1e1b4b" />
+                                        <circle cx="128" cy="42" r="9" fill="url(#bossEye)" />
+                                        <circle cx="128" cy="42" r="4" fill="#7c3aed" />
+                                        <circle cx="125" cy="39" r="2.5" fill="white" opacity="0.5" />
+
+                                        {/* Jaw / Mouth */}
+                                        <path d="M85,60 Q110,75 135,60" stroke="#4338ca" strokeWidth="2" fill="none" />
+                                        {/* Teeth */}
+                                        <path d="M90,60 L87,68 L93,60" fill="#e0e7ff" />
+                                        <path d="M105,62 L103,70 L108,62" fill="#e0e7ff" />
+                                        <path d="M120,62 L118,70 L123,62" fill="#e0e7ff" />
+                                        <path d="M130,60 L128,68 L133,60" fill="#e0e7ff" />
+
+                                        {/* Ice breath glow from mouth */}
+                                        <ellipse cx="110" cy="68" rx="15" ry="6" fill="#a5f3fc" opacity="0.3" filter="url(#iceGlow)" />
+
+                                        {/* Claws / feet */}
+                                        <path d="M70,175 L60,188 M75,177 L68,192 M80,178 L76,193" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" />
+                                        <path d="M150,175 L160,188 M145,177 L152,192 M140,178 L144,193" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" />
+                                    </svg>
+
+                                    {/* Mouth glow emitter */}
+                                    <div className="absolute" style={{ top: 68, left: 100, width: 20, height: 8 }}>
+                                        <div className="w-full h-full bg-cyan-300 blur-sm animate-pulse opacity-60"></div>
+                                    </div>
+
+                                    {/* Health Bar */}
+                                    <div className="absolute -top-14 left-0 w-full">
+                                        <div className="text-center text-xs font-bold text-purple-300 mb-1 tracking-widest">FROST KING</div>
+                                        <div className="h-4 bg-gray-900 border-2 border-purple-500 rounded-full overflow-hidden shadow-[0_0_10px_rgba(139,92,246,0.5)]">
+                                            <div className="h-full bg-gradient-to-r from-purple-700 via-indigo-500 to-cyan-400 transition-all duration-200" style={{ width: `${boss.health}%` }}></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Projectiles */}
+                        {projectiles.map((p, i) => (
+                            <div key={`proj-${i}`} className="absolute w-4 h-2 bg-yellow-400 rounded-full shadow-[0_0_10px_#fbbf24]"
+                                style={{ left: p.x, top: p.y }} />
+                        ))}
+
+
+                        {/* Visual Particles (Explosions / Lasers) */}
+                        {particles.map((p, i) => (
+                            <div key={i} className="absolute"
+                                style={{
+                                    left: p.x, top: p.y, width: p.size || 5, height: p.size || 5,
+                                    opacity: p.life / 20,
+                                    transform: p.type === 'ice-shard' ? `rotate(${Date.now() / 10 + i * 20}deg)` : 'none'
+                                }}>
+                                {p.type === 'ice-shard' ? (
+                                    <div className="w-full h-full bg-cyan-400 rotate-45 border border-white shadow-[0_0_10px_#22d3ee]"></div>
+                                ) : (
+                                    <div className="w-full h-full rounded-full" style={{ backgroundColor: p.color, boxShadow: `0 0 ${p.size * 2}px ${p.color}` }}></div>
+                                )}
+                            </div>
+                        ))}
+
+
+
+
+
+
+
+                        {/* Credits Screen */}
+                        {creditsActive && (
+                            <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center animate-[fadeIn_2s_ease-out_forwards]">
+                                <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 mb-8 animate-bounce">
+                                    YOU SAVED THE GALAXY!
+                                </h1>
+                                <div className="text-white text-center space-y-4 text-xl">
+                                    <p>Mission Complete.</p>
+                                    <p>The Core is Secure.</p>
+                                    <p className="text-slate-500 mt-8">Thanks for playing!</p>
+                                    <button onClick={onQuit} className="mt-12 px-8 py-3 bg-blue-600 hover:bg-blue-700 rounded-full text-white font-bold transition-all">
+                                        Return to Base
+                                    </button>
+                                </div>
+                                {/* Fireworks */}
+                                <div className="absolute inset-0 pointer-events-none">
+                                    {[...Array(20)].map((_, i) => (
+                                        <div key={i} className="absolute w-2 h-2 bg-yellow-500 rounded-full animate-ping"
+                                            style={{
+                                                left: `${Math.random() * 100}%`,
+                                                top: `${Math.random() * 100}%`,
+                                                animationDelay: `${Math.random() * 2}s`,
+                                                animationDuration: '1s'
+                                            }}></div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+
+
+                        {/* Overlays */}
+                        {/* Overlays moved to end of component */}
+
+                        {/* Player Rendering: Bike + Rider */}
+                        {bikes.map(bike => (
+                            <div key={bike.id} className="absolute"
+                                style={{ left: bike.x - 34, top: bike.y - 48, width: 68, height: 56, transform: `rotate(${bike.rotation}rad)` }}>
+                                <svg width="68" height="56" viewBox="0 0 68 56" overflow="visible">
+                                    <defs>
+                                        <linearGradient id="bikeBodyGrad" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor="#38bdf8" />
+                                            <stop offset="100%" stopColor="#0369a1" />
+                                        </linearGradient>
+                                        <linearGradient id="trackGrad" x1="0" y1="0" x2="1" y2="0">
+                                            <stop offset="0%" stopColor="#1e293b" />
+                                            <stop offset="50%" stopColor="#334155" />
+                                            <stop offset="100%" stopColor="#1e293b" />
+                                        </linearGradient>
+                                    </defs>
+
+                                    {/* === SNOWMOBILE TRACK === */}
+                                    <rect x="4" y="42" width="60" height="10" rx="5" fill="url(#trackGrad)" stroke="#475569" strokeWidth="1" />
+                                    {/* Track tread marks */}
+                                    {[0, 1, 2, 3, 4, 5].map(i => (
+                                        <rect key={i}
+                                            x={6 + ((i * 10 + (bike.wheelRotation * 5 | 0)) % 56)}
+                                            y="43" width="4" height="8" rx="1"
+                                            fill="#475569" opacity="0.7" />
+                                    ))}
+
+                                    {/* === SNOWMOBILE BODY === */}
+                                    {/* Ski/hull base */}
+                                    <path d="M4,42 Q2,46 8,47 L60,47 Q66,46 64,42 Z" fill="#0f172a" />
+                                    {/* Main body fairing */}
+                                    <path d="M10,42 L10,26 Q12,18 22,16 L50,16 Q58,18 60,26 L60,42 Z" fill="url(#bikeBodyGrad)" stroke="#38bdf8" strokeWidth="1.5" />
+                                    {/* Windshield */}
+                                    <path d="M38,16 L34,24 L52,24 L54,16 Z" fill="#7dd3fc" opacity="0.5" stroke="#bae6fd" strokeWidth="1" />
+                                    {/* Hood intake grilles */}
+                                    <rect x="12" y="28" width="16" height="3" rx="1" fill="#1e40af" opacity="0.7" />
+                                    <rect x="12" y="33" width="12" height="3" rx="1" fill="#1e40af" opacity="0.7" />
+                                    {/* Side accent stripe */}
+                                    <path d="M10,36 L60,36" stroke="#22d3ee" strokeWidth="1.5" opacity="0.6" />
+                                    {/* Headlight */}
+                                    <ellipse cx="61" cy="28" rx="4" ry="5" fill="#fef08a" stroke="#fbbf24" strokeWidth="1" />
+                                    <ellipse cx="61" cy="28" rx="2" ry="3" fill="white" opacity="0.8" />
+                                    {/* Exhaust pipe */}
+                                    <rect x="6" y="34" width="6" height="5" rx="1" fill="#475569" />
+                                    <ellipse cx="6" cy="34" rx="3" ry="2.5" fill="#64748b" />
+                                    {/* Glowing thermal core indicator */}
+                                    <circle cx="30" cy="30" r="4" fill="#22d3ee" stroke="white" strokeWidth="1"
+                                        style={{ filter: 'drop-shadow(0 0 4px #22d3ee)' }} />
+                                    <circle cx="30" cy="30" r="2" fill="white" />
+
+                                    {/* === RIDER === */}
+                                    {/* Rider body/suit */}
+                                    <path d="M32,16 Q34,8 38,6 L42,6 Q46,8 46,16 Z" fill="#1d4ed8" stroke="#3b82f6" strokeWidth="1" />
+                                    {/* Rider helmet */}
+                                    <circle cx="39" cy="8" r="8" fill="#1e293b" stroke="#475569" strokeWidth="1.5" />
+                                    {/* Visor */}
+                                    <path d="M33,6 Q39,2 45,6 Q45,10 39,11 Q33,10 33,6 Z" fill="#f97316" opacity="0.85" />
+                                    {/* Helmet ridge */}
+                                    <path d="M31,8 Q39,4 47,8" stroke="#64748b" strokeWidth="1" fill="none" />
+                                    {/* Rider arm holding handlebars */}
+                                    <path d="M46,12 L54,20" stroke="#1d4ed8" strokeWidth="4" strokeLinecap="round" />
+                                    <circle cx="54" cy="20" r="3" fill="#475569" /> {/* Handlebar grip */}
+                                </svg>
+
+                                {/* Boost Exhaust Flame */}
+                                {(keysPressed.current['e'] || touchInputs.current.boost) && (
+                                    <div className="absolute" style={{ left: -18, top: 28, width: 20, height: 10 }}>
+                                        <div className="w-full h-full bg-gradient-to-l from-orange-500 via-yellow-400 to-transparent rounded-full blur-sm animate-pulse"></div>
+                                        <div className="absolute inset-0 w-3/4 h-full bg-white/40 rounded-full blur-sm"></div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+
+                        {/* Particles */}
+                        {particles.map((p, i) => (
+                            <div key={i} className="absolute rounded-full" style={{ left: p.x, top: p.y, width: p.size, height: p.size, backgroundColor: p.color, opacity: p.life / 20 }} />
+                        ))}
+                    </div>
+
+                    {/* Level 2 & 4: Echo-Location / Darkness Overlay */}
+                    {(stage === 2 || stage === 4) && bikes[0] && (
+                        <div className="absolute inset-0 z-40 pointer-events-none"
+                            style={{
+                                background: `radial-gradient(circle 250px at ${bikes[0].x - cameraOffset}px ${bikes[0].y}px, transparent 0%, rgba(0,0,0,0.8) 40%, rgba(0,0,0,1) 100%)`
+                            }}>
+                        </div>
+                    )}
+
+
+
+                    {/* Falling Snow Overlay - Hide in Factory */}
+                    {stage !== 3 && snow.map((s, i) => (
+                        <div key={`s-${i}`} className="absolute bg-white rounded-full opacity-60 pointer-events-none"
+                            style={{ left: s.x, top: s.y, width: s.size, height: s.size }} />
+                    ))}
+
+                    {/* Data Log UI Overlay */}
+                    {dataLogActive && (
+                        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+                            <div className="bg-black/90 border border-green-500 text-green-500 p-4 font-mono text-sm shadow-2xl animate-glitch max-w-sm">
+                                <div className="text-xs text-green-700 mb-1 border-b border-green-800 pb-1">SYSTEM_OVERRIDE // LOG_024</div>
+                                <div className="typing-effect">
+                                    "Initialization complete. Core Temperature nominal. We have missed you, Probe-7."
                                 </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
 
-                {/* Projectiles */}
-                {projectiles.map((p, i) => (
-                    <div key={`proj-${i}`} className="absolute w-4 h-2 bg-yellow-400 rounded-full shadow-[0_0_10px_#fbbf24]"
-                        style={{ left: p.x, top: p.y }} />
-                ))}
+                    {/* Story Intro Modal */}
+                    {showIntro && (
+                        <div className="absolute inset-0 z-[60] bg-black/90 flex items-center justify-center p-8 backdrop-blur-sm">
+                            <div className="max-w-2xl w-full bg-slate-900 border border-blue-500/30 p-8 rounded-sm shadow-[0_0_50px_rgba(59,130,246,0.2)] animate-fade-in-up">
+                                <div className="text-center mb-8">
+                                    <div className="text-blue-500 text-xs tracking-[0.3em] uppercase mb-2">Incoming Transmission...</div>
+                                    <h2 className="text-4xl font-black text-white italic tracking-tighter mb-1">
+                                        {stageConfig.name}
+                                    </h2>
+                                    <h3 className="text-xl text-blue-200 font-light tracking-widest uppercase">
+                                        {stageConfig.subtitle}
+                                    </h3>
+                                </div>
 
+                                <div className="text-slate-300 font-mono text-lg leading-relaxed mb-8 border-l-2 border-blue-500 pl-6 space-y-4">
+                                    <p className="text-yellow-400 font-bold">MISSION: SUPERNATURAL ESCAPE</p>
+                                    <p>"You are trapped in the Cursed Ice Mountains. The only way out is to defeat the King of the Mountain."</p>
+                                    <div className="bg-blue-900/40 p-4 rounded text-sm">
+                                        <p className="text-blue-200 font-bold mb-1">INSTRUCTIONS:</p>
+                                        <ul className="list-disc list-inside space-y-1">
+                                            <li>Double tap <span className="text-white font-bold">JUMP/W</span> to Double Jump over large gaps.</li>
+                                            <li>Use <span className="text-white font-bold">BOOST [E]</span> to clear long distances.</li>
+                                            <li className="text-red-400 font-bold underline">WARNING: You have 10 MINUTES TOTAL to complete all levels.</li>
+                                        </ul>
+                                    </div>
+                                    {stage === 5 && <p className="text-red-400 animate-pulse">"This is it. The King awaits. SURVIVE."</p>}
+                                </div>
 
-                {/* Visual Particles (Explosions / Lasers) */}
-                {particles.map((p, i) => (
-                    <div key={i} className="absolute"
-                        style={{
-                            left: p.x, top: p.y, width: p.size || 5, height: p.size || 5,
-                            opacity: p.life / 20,
-                            transform: p.type === 'ice-shard' ? `rotate(${Date.now() / 10 + i * 20}deg)` : 'none'
-                        }}>
-                        {p.type === 'ice-shard' ? (
-                            <div className="w-full h-full bg-cyan-400 rotate-45 border border-white shadow-[0_0_10px_#22d3ee]"></div>
-                        ) : (
-                            <div className="w-full h-full rounded-full" style={{ backgroundColor: p.color, boxShadow: `0 0 ${p.size * 2}px ${p.color}` }}></div>
-                        )}
-                    </div>
-                ))}
-
-
-
-
-
-
-
-                {/* Credits Screen */}
-                {creditsActive && (
-                    <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center animate-[fadeIn_2s_ease-out_forwards]">
-                        <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 mb-8 animate-bounce">
-                            YOU SAVED THE GALAXY!
-                        </h1>
-                        <div className="text-white text-center space-y-4 text-xl">
-                            <p>Mission Complete.</p>
-                            <p>The Core is Secure.</p>
-                            <p className="text-slate-500 mt-8">Thanks for playing!</p>
-                            <button onClick={onQuit} className="mt-12 px-8 py-3 bg-blue-600 hover:bg-blue-700 rounded-full text-white font-bold transition-all">
-                                Return to Base
-                            </button>
-                        </div>
-                        {/* Fireworks */}
-                        <div className="absolute inset-0 pointer-events-none">
-                            {[...Array(20)].map((_, i) => (
-                                <div key={i} className="absolute w-2 h-2 bg-yellow-500 rounded-full animate-ping"
-                                    style={{
-                                        left: `${Math.random() * 100}%`,
-                                        top: `${Math.random() * 100}%`,
-                                        animationDelay: `${Math.random() * 2}s`,
-                                        animationDuration: '1s'
-                                    }}></div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-
-
-                {/* Overlays */}
-                {/* Overlays moved to end of component */}
-
-                {/* Player Rendering: Bike + Rider */}
-                {bikes.map(bike => (
-                    <div key={bike.id} className="absolute"
-                        style={{ left: bike.x - 34, top: bike.y - 48, width: 68, height: 56, transform: `rotate(${bike.rotation}rad)` }}>
-                        <svg width="68" height="56" viewBox="0 0 68 56" overflow="visible">
-                            <defs>
-                                <linearGradient id="bikeBodyGrad" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#38bdf8" />
-                                    <stop offset="100%" stopColor="#0369a1" />
-                                </linearGradient>
-                                <linearGradient id="trackGrad" x1="0" y1="0" x2="1" y2="0">
-                                    <stop offset="0%" stopColor="#1e293b" />
-                                    <stop offset="50%" stopColor="#334155" />
-                                    <stop offset="100%" stopColor="#1e293b" />
-                                </linearGradient>
-                            </defs>
-
-                            {/* === SNOWMOBILE TRACK === */}
-                            <rect x="4" y="42" width="60" height="10" rx="5" fill="url(#trackGrad)" stroke="#475569" strokeWidth="1" />
-                            {/* Track tread marks */}
-                            {[0, 1, 2, 3, 4, 5].map(i => (
-                                <rect key={i}
-                                    x={6 + ((i * 10 + (bike.wheelRotation * 5 | 0)) % 56)}
-                                    y="43" width="4" height="8" rx="1"
-                                    fill="#475569" opacity="0.7" />
-                            ))}
-
-                            {/* === SNOWMOBILE BODY === */}
-                            {/* Ski/hull base */}
-                            <path d="M4,42 Q2,46 8,47 L60,47 Q66,46 64,42 Z" fill="#0f172a" />
-                            {/* Main body fairing */}
-                            <path d="M10,42 L10,26 Q12,18 22,16 L50,16 Q58,18 60,26 L60,42 Z" fill="url(#bikeBodyGrad)" stroke="#38bdf8" strokeWidth="1.5" />
-                            {/* Windshield */}
-                            <path d="M38,16 L34,24 L52,24 L54,16 Z" fill="#7dd3fc" opacity="0.5" stroke="#bae6fd" strokeWidth="1" />
-                            {/* Hood intake grilles */}
-                            <rect x="12" y="28" width="16" height="3" rx="1" fill="#1e40af" opacity="0.7" />
-                            <rect x="12" y="33" width="12" height="3" rx="1" fill="#1e40af" opacity="0.7" />
-                            {/* Side accent stripe */}
-                            <path d="M10,36 L60,36" stroke="#22d3ee" strokeWidth="1.5" opacity="0.6" />
-                            {/* Headlight */}
-                            <ellipse cx="61" cy="28" rx="4" ry="5" fill="#fef08a" stroke="#fbbf24" strokeWidth="1" />
-                            <ellipse cx="61" cy="28" rx="2" ry="3" fill="white" opacity="0.8" />
-                            {/* Exhaust pipe */}
-                            <rect x="6" y="34" width="6" height="5" rx="1" fill="#475569" />
-                            <ellipse cx="6" cy="34" rx="3" ry="2.5" fill="#64748b" />
-                            {/* Glowing thermal core indicator */}
-                            <circle cx="30" cy="30" r="4" fill="#22d3ee" stroke="white" strokeWidth="1"
-                                style={{ filter: 'drop-shadow(0 0 4px #22d3ee)' }} />
-                            <circle cx="30" cy="30" r="2" fill="white" />
-
-                            {/* === RIDER === */}
-                            {/* Rider body/suit */}
-                            <path d="M32,16 Q34,8 38,6 L42,6 Q46,8 46,16 Z" fill="#1d4ed8" stroke="#3b82f6" strokeWidth="1" />
-                            {/* Rider helmet */}
-                            <circle cx="39" cy="8" r="8" fill="#1e293b" stroke="#475569" strokeWidth="1.5" />
-                            {/* Visor */}
-                            <path d="M33,6 Q39,2 45,6 Q45,10 39,11 Q33,10 33,6 Z" fill="#f97316" opacity="0.85" />
-                            {/* Helmet ridge */}
-                            <path d="M31,8 Q39,4 47,8" stroke="#64748b" strokeWidth="1" fill="none" />
-                            {/* Rider arm holding handlebars */}
-                            <path d="M46,12 L54,20" stroke="#1d4ed8" strokeWidth="4" strokeLinecap="round" />
-                            <circle cx="54" cy="20" r="3" fill="#475569" /> {/* Handlebar grip */}
-                        </svg>
-
-                        {/* Boost Exhaust Flame */}
-                        {(keysPressed.current['e'] || touchInputs.current.boost) && (
-                            <div className="absolute" style={{ left: -18, top: 28, width: 20, height: 10 }}>
-                                <div className="w-full h-full bg-gradient-to-l from-orange-500 via-yellow-400 to-transparent rounded-full blur-sm animate-pulse"></div>
-                                <div className="absolute inset-0 w-3/4 h-full bg-white/40 rounded-full blur-sm"></div>
+                                <button
+                                    onClick={() => setShowIntro(false)}
+                                    className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold tracking-widest uppercase transition-all shadow-[0_0_20px_rgba(37,99,235,0.4)] hover:shadow-[0_0_30px_rgba(37,99,235,0.6)]"
+                                >
+                                    <span className="animate-pulse">Acknowledged // Begin Mission</span>
+                                </button>
                             </div>
-                        )}
-                    </div>
-                ))}
-
-                {/* Particles */}
-                {particles.map((p, i) => (
-                    <div key={i} className="absolute rounded-full" style={{ left: p.x, top: p.y, width: p.size, height: p.size, backgroundColor: p.color, opacity: p.life / 20 }} />
-                ))}
-            </div>
-
-            {/* Level 2 & 4: Echo-Location / Darkness Overlay */}
-            {(stage === 2 || stage === 4) && bikes[0] && (
-                <div className="absolute inset-0 z-40 pointer-events-none"
-                    style={{
-                        background: `radial-gradient(circle 250px at ${bikes[0].x - cameraOffset}px ${bikes[0].y}px, transparent 0%, rgba(0,0,0,0.8) 40%, rgba(0,0,0,1) 100%)`
-                    }}>
-                </div>
-            )}
+                        </div>
+                    )}
 
 
 
-            {/* Falling Snow Overlay - Hide in Factory */}
-            {stage !== 3 && snow.map((s, i) => (
-                <div key={`s-${i}`} className="absolute bg-white rounded-full opacity-60 pointer-events-none"
-                    style={{ left: s.x, top: s.y, width: s.size, height: s.size }} />
-            ))}
-
-            {/* Data Log UI Overlay */}
-            {dataLogActive && (
-                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-                    <div className="bg-black/90 border border-green-500 text-green-500 p-4 font-mono text-sm shadow-2xl animate-glitch max-w-sm">
-                        <div className="text-xs text-green-700 mb-1 border-b border-green-800 pb-1">SYSTEM_OVERRIDE // LOG_024</div>
-                        <div className="typing-effect">
-                            "Initialization complete. Core Temperature nominal. We have missed you, Probe-7."
+                    {/* Boost Meter UI */}
+                    <div className="absolute bottom-20 right-10 flex flex-col items-center">
+                        <div className="text-cyan-400 font-bold text-sm mb-1">BOOST [E]</div>
+                        <div className="w-32 h-4 bg-gray-800 rounded-full border border-gray-600 overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 w-full animate-pulse"></div>
                         </div>
                     </div>
-                </div>
-            )}
 
-            {/* Story Intro Modal */}
-            {showIntro && (
-                <div className="absolute inset-0 z-[60] bg-black/90 flex items-center justify-center p-8 backdrop-blur-sm">
-                    <div className="max-w-2xl w-full bg-slate-900 border border-blue-500/30 p-8 rounded-sm shadow-[0_0_50px_rgba(59,130,246,0.2)] animate-fade-in-up">
-                        <div className="text-center mb-8">
-                            <div className="text-blue-500 text-xs tracking-[0.3em] uppercase mb-2">Incoming Transmission...</div>
-                            <h2 className="text-4xl font-black text-white italic tracking-tighter mb-1">
-                                {stageConfig.name}
-                            </h2>
-                            <h3 className="text-xl text-blue-200 font-light tracking-widest uppercase">
-                                {stageConfig.subtitle}
-                            </h3>
-                        </div>
-
-                        <div className="text-slate-300 font-mono text-lg leading-relaxed mb-8 border-l-2 border-blue-500 pl-6 space-y-4">
-                            <p className="text-yellow-400 font-bold">MISSION: SUPERNATURAL ESCAPE</p>
-                            <p>"You are trapped in the Cursed Ice Mountains. The only way out is to defeat the King of the Mountain."</p>
-                            <div className="bg-blue-900/40 p-4 rounded text-sm">
-                                <p className="text-blue-200 font-bold mb-1">INSTRUCTIONS:</p>
-                                <ul className="list-disc list-inside space-y-1">
-                                    <li>Double tap <span className="text-white font-bold">JUMP/W</span> to Double Jump over large gaps.</li>
-                                    <li>Use <span className="text-white font-bold">BOOST [E]</span> to clear long distances.</li>
-                                    <li className="text-red-400 font-bold underline">WARNING: You have 10 MINUTES TOTAL to complete all levels.</li>
-                                </ul>
-                            </div>
-                            {stage === 5 && <p className="text-red-400 animate-pulse">"This is it. The King awaits. SURVIVE."</p>}
-                        </div>
-
-                        <button
-                            onClick={() => setShowIntro(false)}
-                            className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold tracking-widest uppercase transition-all shadow-[0_0_20px_rgba(37,99,235,0.4)] hover:shadow-[0_0_30px_rgba(37,99,235,0.6)]"
-                        >
-                            <span className="animate-pulse">Acknowledged // Begin Mission</span>
-                        </button>
+                    <div className="absolute bottom-4 right-10 text-right opacity-70 text-xs">
+                        <div>[D] Fwd • [A] Back • [W] Jump • [E] Boost</div>
+                        {stage === 5 && <div className="text-yellow-400 font-bold animate-pulse">[F] FIRE!</div>}
                     </div>
+
+                    {/* Overlays (Fixed Position) */}
+                    {gameState === 'failed' && (
+                        <GameOverOverlay
+                            onRetry={() => resetGame(false)}
+                            onMenu={onQuit}
+                            reason={globalTime <= 0 ? "TIME CRITICAL FAILURE (10 MIN LIMIT REACHED)" : "CATASTROPHIC SYSTEM ERROR"}
+                        />
+                    )}
+
+                    {gameState === 'completed' && (
+                        <LevelCompleteOverlay
+                            onNextLevel={onStageComplete}
+                            onMenu={onQuit}
+                            score={Math.floor(score + globalTime * 10)}
+                            time={Math.ceil(600 - globalTime)}
+                        />
+                    )}
+
                 </div>
-            )}
-
-
-
-            {/* Boost Meter UI */}
-            <div className="absolute bottom-20 right-10 flex flex-col items-center">
-                <div className="text-cyan-400 font-bold text-sm mb-1">BOOST [E]</div>
-                <div className="w-32 h-4 bg-gray-800 rounded-full border border-gray-600 overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 w-full animate-pulse"></div>
-                </div>
+                {/* End of scaled game canvas */}
             </div>
 
-            <div className="absolute bottom-4 right-10 text-right opacity-70 text-xs">
-                <div>[D] Fwd • [A] Back • [W] Jump • [E] Boost</div>
-                {stage === 5 && <div className="text-yellow-400 font-bold animate-pulse">[F] FIRE!</div>}
-            </div>
-
-            {/* Overlays (Fixed Position) */}
-            {gameState === 'failed' && (
-                <GameOverOverlay
-                    onRetry={() => resetGame(false)}
-                    onMenu={onQuit}
-                    reason={globalTime <= 0 ? "TIME CRITICAL FAILURE (10 MIN LIMIT REACHED)" : "CATASTROPHIC SYSTEM ERROR"}
-                />
-            )}
-
-            {gameState === 'completed' && (
-                <LevelCompleteOverlay
-                    onNextLevel={onStageComplete}
-                    onMenu={onQuit}
-                    score={Math.floor(score + globalTime * 10)}
-                    time={Math.ceil(600 - globalTime)}
-                />
-            )}
-
+            {/* MobileControls rendered OUTSIDE the scale wrapper so touch coords match real screen pixels */}
             <MobileControls
                 onAction={(type, value) => {
                     if (type === 'move') touchInputs.current.move = value;
