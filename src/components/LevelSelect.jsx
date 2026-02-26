@@ -40,7 +40,7 @@ const LevelSelect = ({ onSelectLevel, onBack, unlockedStage = 5 }) => {
                     <div className="h-1 w-24 md:w-32 bg-gradient-to-r from-transparent via-cyan-400 to-transparent mx-auto mt-4 rounded-full shadow-[0_0_10px_cyan]"></div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-6 flex-1 items-center pb-8 md:pb-12">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-6 flex-1 items-center pb-8 md:pb-12">
                     {levels.map((level, index) => {
                         const isLocked = level.id > unlockedStage;
                         return (
@@ -48,7 +48,7 @@ const LevelSelect = ({ onSelectLevel, onBack, unlockedStage = 5 }) => {
                                 key={level.id}
                                 onClick={() => !isLocked && onSelectLevel(level.id)}
                                 disabled={isLocked}
-                                className={`group relative flex flex-col items-center p-6 rounded-[2em] transition-all duration-500 transform hover:scale-105 active:scale-95 animate-fade-in-up h-72 w-full
+                                className={`group relative flex flex-col items-center p-4 md:p-6 rounded-[2em] transition-all duration-500 transform hover:scale-105 active:scale-95 animate-fade-in-up h-44 md:h-72 w-full
                                     ${isLocked ? 'opacity-40 grayscale cursor-not-allowed' : 'hover:shadow-[0_0_40px_rgba(0,150,255,0.3)]'}
                                     bg-gradient-to-b from-white/10 to-white/5 backdrop-blur-xl border border-white/10 ring-1 ring-white/20`}
                                 style={{ animationDelay: `${index * 0.1}s` }}

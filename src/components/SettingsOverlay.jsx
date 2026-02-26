@@ -8,7 +8,7 @@ const SettingsOverlay = ({ onClose }) => {
 
     return (
         <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
-            <div className="relative w-full max-w-md p-8 bg-slate-900/90 rounded-2xl border border-cyan-500/30 shadow-[0_0_50px_rgba(0,255,255,0.2)]">
+            <div className="relative w-full max-w-md mx-4 p-6 md:p-8 bg-slate-900/90 rounded-2xl border border-cyan-500/30 shadow-[0_0_50px_rgba(0,255,255,0.2)]">
 
                 <button
                     onClick={onClose}

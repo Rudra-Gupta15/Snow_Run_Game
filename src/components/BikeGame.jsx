@@ -66,8 +66,8 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
         1: { name: 'Frozen Tundra', subtitle: 'The Awakening', obstacles: 15, length: 12000, bg: 'from-sky-800 via-blue-900 to-slate-900', bgImage: '/snow_bg.jpg' },
         2: { name: 'Glacial Caverns', subtitle: 'The Descent', obstacles: 25, length: 18000, bg: 'from-indigo-950 via-cyan-950 to-black', bgImage: '/snow_bg.jpg' },
         3: { name: 'Snowy Peak', subtitle: 'The Climb', obstacles: 40, length: 22000, bg: 'from-sky-800 via-blue-900 to-slate-900', bgImage: '/snow_bg.jpg' },
-        4: { name: 'Ice Ridge', subtitle: 'The Summit', obstacles: 35, length: 26000, bg: 'from-sky-800 via-blue-900 to-slate-900', bgImage: '/snow_bg.jpg' },
-        5: { name: 'Blizzard Run', subtitle: 'The Boss Fight', obstacles: 20, length: 30000, bg: 'from-red-900 via-slate-900 to-black', bgImage: '/snow_bg.jpg' }
+        4: { name: 'Ice Ridge', subtitle: 'The Summit', obstacles: 35, length: 26000, bg: 'from-sky-800 via-blue-900 to-slate-900', bgImage: null },
+        5: { name: 'Blizzard Run', subtitle: 'The Boss Fight', obstacles: 20, length: 30000, bg: 'from-red-900 via-slate-900 to-black', bgImage: null }
     };
 
     const stageConfig = stageConfigs[stage] || stageConfigs[1];
@@ -543,11 +543,11 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                     createParticle(newBike.x + 30, newBike.y - 10, '#ffff00');
                 }
 
-                // Enemy Collision (Bears)
+                // Enemy Collision (Bears) — tightened hitbox so jumping over doesn't false-trigger
                 currentEnemies.forEach(enemy => {
-                    const dx = Math.abs(newBike.x - enemy.x);
-                    const dy = Math.abs(newBike.y - enemy.y);
-                    if (dx < 40 && dy < 40 && !isInvulnerable) {
+                    const dx = Math.abs(newBike.x - (enemy.x + enemy.width / 2));
+                    const dy = Math.abs(newBike.y - (enemy.y + enemy.height / 2));
+                    if (dx < 22 && dy < 18 && !isInvulnerable) {
                         newBike.crashed = true;
                         createExplosion(newBike.x, newBike.y);
                         setGameState('failed');
@@ -757,7 +757,56 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
             )}
 
             {/* Moon & Stars (Hide in Factory) */}
-            {stage !== 3 && (
+            {stage === 5 && (
+                <div className="fixed inset-0 z-[1] pointer-events-none">
+                    {/* Dense starfield for Level 5 */}
+                    {Array.from({ length: 160 }, (_, i) => {
+                        const seed = i * 2654435761;
+                        const x = ((seed >> 0) & 0xFFFF) / 0xFFFF * 100;
+                        const y = ((seed >> 5) & 0xFFFF) / 0xFFFF * 100;
+                        const size = 0.5 + (((seed >> 10) & 0xFF) / 0xFF) * 2.5;
+                        const delay = (((seed >> 15) & 0xFF) / 0xFF) * 4;
+                        const bright = 0.4 + (((seed >> 20) & 0xFF) / 0xFF) * 0.6;
+                        const isBlue = i % 5 === 0;
+                        const isPurple = i % 7 === 0;
+                        return (
+                            <div key={`star-${i}`}
+                                className="absolute rounded-full animate-pulse"
+                                style={{
+                                    left: `${x}%`,
+                                    top: `${y}%`,
+                                    width: size,
+                                    height: size,
+                                    backgroundColor: isBlue ? '#93c5fd' : isPurple ? '#c4b5fd' : 'white',
+                                    opacity: bright,
+                                    animationDelay: `${delay}s`,
+                                    animationDuration: `${2 + delay * 0.5}s`,
+                                    boxShadow: size > 2 ? `0 0 ${size * 2}px ${isBlue ? '#93c5fd' : isPurple ? '#c4b5fd' : 'white'}` : 'none'
+                                }}
+                            />
+                        );
+                    })}
+                    {/* Large glowing stars */}
+                    {[[15, 10], [45, 5], [70, 15], [85, 8], [30, 3], [60, 18], [90, 12]].map(([x, y], i) => (
+                        <div key={`bigstar-${i}`} className="absolute animate-pulse"
+                            style={{
+                                left: `${x}%`, top: `${y}%`,
+                                width: 4, height: 4,
+                                backgroundColor: 'white',
+                                borderRadius: '50%',
+                                opacity: 0.9,
+                                animationDelay: `${i * 0.7}s`,
+                                boxShadow: '0 0 8px 2px rgba(255,255,255,0.6), 0 0 20px 4px rgba(165,243,252,0.3)'
+                            }}
+                        />
+                    ))}
+                    {/* Nebula clouds - purple/red tones for boss level */}
+                    <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_40%_at_20%_20%,rgba(109,40,217,0.12),transparent)]" />
+                    <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_30%_at_80%_15%,rgba(185,28,28,0.08),transparent)]" />
+                </div>
+            )}
+            {/* Moon & Stars (Hide in Factory and Level 5 where we use custom starfield) */}
+            {stage !== 3 && stage !== 5 && (
                 <>
                     {/* Stars */}
                     <div className="absolute inset-0"
@@ -827,18 +876,70 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                 {obstacles.map(obs => (
                     <div key={obs.id} className="absolute" style={{
                         left: obs.x, top: obs.y, width: obs.width, height: obs.height,
-                        transformOrigin: 'bottom center', // FIX: Pivot from bottom to stay on ground
+                        transformOrigin: 'bottom center',
                         transform: `rotate(${obs.rotation}rad)`
                     }}>
 
+                        {/* ICE SPIKE */}
+                        {obs.type === 'spike' && (
+                            <svg width="100%" height="100%" viewBox="0 0 40 40" preserveAspectRatio="none">
+                                <defs>
+                                    <linearGradient id="spikeGrad" x1="0" y1="0" x2="1" y2="1">
+                                        <stop offset="0%" stopColor="#a5f3fc" />
+                                        <stop offset="100%" stopColor="#0284c7" />
+                                    </linearGradient>
+                                </defs>
+                                {/* Main spike */}
+                                <polygon points="20,0 0,40 40,40" fill="url(#spikeGrad)" stroke="#7dd3fc" strokeWidth="1.5" />
+                                {/* Highlight shine */}
+                                <polygon points="20,0 10,40 20,35" fill="white" opacity="0.3" />
+                                {/* Side mini spikes */}
+                                <polygon points="5,40 0,25 12,40" fill="#7dd3fc" opacity="0.7" />
+                                <polygon points="35,40 40,25 28,40" fill="#7dd3fc" opacity="0.7" />
+                            </svg>
+                        )}
 
-                        {obs.type === 'spike' && <div className="w-full h-full bg-cyan-300 clip-path-polygon-[50%_0,0_100%,100%_100%] opacity-80 shadow-lg" />}
-                        {obs.type === 'rock' && <div className="w-full h-full bg-slate-500 rounded-lg border-2 border-slate-400 rotate-45" />}
-                        {obs.type === 'ramp' && <div className="w-full h-full bg-slate-200 border-r-4 border-blue-200 clip-path-polygon-[100%_0,0_100%,100%_100%]" />}
+                        {/* BOULDER / ROCK */}
+                        {obs.type === 'rock' && (
+                            <svg width="100%" height="100%" viewBox="0 0 60 50" preserveAspectRatio="none">
+                                <defs>
+                                    <radialGradient id="rockGrad" cx="35%" cy="30%" r="60%">
+                                        <stop offset="0%" stopColor="#94a3b8" />
+                                        <stop offset="100%" stopColor="#334155" />
+                                    </radialGradient>
+                                </defs>
+                                <ellipse cx="30" cy="30" rx="28" ry="18" fill="url(#rockGrad)" stroke="#475569" strokeWidth="2" />
+                                {/* Cracks */}
+                                <path d="M20,18 L28,30 L22,42" stroke="#1e293b" strokeWidth="1.5" fill="none" opacity="0.6" />
+                                <path d="M35,20 L40,32" stroke="#1e293b" strokeWidth="1" fill="none" opacity="0.5" />
+                                {/* Ice glaze on top */}
+                                <ellipse cx="30" cy="18" rx="18" ry="5" fill="#bae6fd" opacity="0.3" />
+                                {/* Highlight */}
+                                <ellipse cx="22" cy="22" rx="7" ry="4" fill="white" opacity="0.15" />
+                            </svg>
+                        )}
+
+                        {/* RAMP */}
+                        {obs.type === 'ramp' && (
+                            <svg width="100%" height="100%" viewBox="0 0 80 60" preserveAspectRatio="none">
+                                <defs>
+                                    <linearGradient id="rampGrad" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#e2e8f0" />
+                                        <stop offset="100%" stopColor="#94a3b8" />
+                                    </linearGradient>
+                                </defs>
+                                <polygon points="80,0 0,60 80,60" fill="url(#rampGrad)" stroke="#bfdbfe" strokeWidth="2" />
+                                {/* Surface stripes */}
+                                <line x1="60" y1="8" x2="80" y2="8" stroke="white" strokeWidth="2" opacity="0.4" />
+                                <line x1="40" y1="23" x2="80" y2="23" stroke="white" strokeWidth="2" opacity="0.4" />
+                                <line x1="20" y1="38" x2="80" y2="38" stroke="white" strokeWidth="2" opacity="0.4" />
+                                {/* Ice shine on edge */}
+                                <polygon points="80,0 72,0 80,8" fill="#7dd3fc" opacity="0.5" />
+                            </svg>
+                        )}
 
                         {obs.type === 'frozen-probe' && (
-                            <div className="w-full h-full opacity-50 grayscale contrast-125 brightness-50" style={{ transform: `rotate(${obs.rotation}rad)` }}>
-                                {/* Simplified frozen bike shape */}
+                            <div className="w-full h-full opacity-60" style={{ transform: `rotate(${obs.rotation}rad)` }}>
                                 <div className="absolute bottom-0 w-full h-3 bg-blue-900 rounded-full"></div>
                                 <div className="absolute bottom-3 left-2 w-8 h-4 bg-slate-700 skew-x-[-20deg]"></div>
                                 <div className="absolute bottom-0 left-0 w-full h-full bg-cyan-500/30 mix-blend-overlay"></div>
@@ -846,18 +947,13 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                         )}
                         {obs.type === 'heat-vent' && (
                             <div className="w-full h-full bg-gradient-to-b from-slate-700 to-slate-900 border-x-2 border-slate-600 flex flex-col items-center justify-end relative">
-                                {/* Industrial Vent Look */}
                                 <div className="w-full h-1 bg-black/50 mb-1"></div>
                                 <div className="w-full h-1 bg-black/50 mb-1"></div>
                                 <div className="w-full h-1 bg-black/50 mb-1"></div>
-                                {/* Orange Glow Inside */}
                                 <div className="absolute bottom-0 w-3/4 h-2 bg-orange-500 blur-sm animate-pulse"></div>
-                                {/* Steam Particles (Simple CSS animation) */}
                                 <div className="absolute -top-10 w-2 h-10 bg-white/20 blur-md animate-ping"></div>
-                                <div className="absolute -top-16 w-4 h-16 bg-white/10 blur-xl animate-pulse"></div>
                             </div>
                         )}
-                        {/* Level 3: Factory Hazards */}
                         {obs.type === 'lava-can' && (
                             <div className="w-full h-full bg-slate-800 border-2 border-yellow-500 rounded-lg flex flex-col items-center justify-center relative overflow-hidden shadow-lg">
                                 <div className="absolute inset-0 bg-[repeating-linear-gradient(45deg,#000,#000_10px,#334155_10px,#334155_20px)] opacity-40"></div>
@@ -867,20 +963,13 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                                 <div className="absolute bottom-0 w-full h-1 bg-green-500 animate-pulse shadow-[0_0_10px_#22c55e]"></div>
                             </div>
                         )}
-                        {obs.type === 'broken-pipe' && (
-                            <div className="w-full h-full bg-zinc-700 border-4 border-zinc-800 rounded-full relative flex items-center justify-center shadow-inner">
-                                <div className="absolute -top-4 w-4/5 h-4 bg-cyan-400/30 blur-md animate-pulse"></div>
-                                <div className="w-full h-1/2 bg-black/20"></div>
-                            </div>
-                        )}
                         {obs.type === 'lava-pit' && (
                             <div className="w-full h-full bg-orange-600/20 border-b-4 border-red-600 relative overflow-hidden">
                                 <div className="absolute inset-0 bg-orange-600 blur-md opacity-50 animate-pulse"></div>
-                                <div className="absolute bottom-0 w-full h-2 bg-white/20"></div>
                             </div>
                         )}
                         {obs.type === 'magnetic-coil' && (
-                            <div className="w-full h-full bg-purple-900/50 rounded-full border-4 border-purple-500 animate-spin-slow flex items-center justify-center">
+                            <div className="w-full h-full bg-purple-900/50 rounded-full border-4 border-purple-500 flex items-center justify-center">
                                 <div className="w-3/4 h-3/4 border-2 border-purple-300 rounded-full border-dashed"></div>
                                 <div className="absolute inset-0 bg-purple-500/20 blur-xl animate-pulse"></div>
                             </div>
@@ -893,67 +982,158 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                     <div key={enemy.id} className="absolute" style={{ left: enemy.x, top: enemy.y, width: enemy.width, height: enemy.height }}>
                         {enemy.type === 'bear' && (
                             <div className="w-full h-full relative" style={{ transformOrigin: 'bottom center', transform: `rotate(${enemy.rotation || 0}rad) scaleX(${-enemy.direction})` }}>
-                                {/* Realistic Polar Bear SVG */}
-                                <svg width="100%" height="100%" viewBox="0 0 100 60" preserveAspectRatio="none">
-                                    {/* Back Legs */}
-                                    <path d="M10,40 Q5,55 10,60 L25,60 Q30,50 25,40 Z" fill="#e2e8f0" />
-                                    <path d="M75,40 Q70,55 75,60 L90,60 Q95,50 90,40 Z" fill="#e2e8f0" />
-                                    {/* Body - Furry Look via simple shapes */}
-                                    <ellipse cx="50" cy="30" rx="45" ry="25" fill="#f8fafc" />
-                                    {/* Front Legs (foreground) */}
-                                    <path d="M15,40 Q10,55 15,60 L30,60 Q35,50 30,40 Z" fill="#f1f5f9" />
-                                    <path d="M70,40 Q65,55 70,60 L85,60 Q90,50 85,40 Z" fill="#f1f5f9" />
+                                <svg width="100%" height="100%" viewBox="0 0 100 65" preserveAspectRatio="none">
+                                    <defs>
+                                        <radialGradient id="bearFur" cx="40%" cy="30%" r="70%">
+                                            <stop offset="0%" stopColor="#f1f5f9" />
+                                            <stop offset="100%" stopColor="#cbd5e1" />
+                                        </radialGradient>
+                                        <radialGradient id="bearHead" cx="40%" cy="35%" r="60%">
+                                            <stop offset="0%" stopColor="#f8fafc" />
+                                            <stop offset="100%" stopColor="#e2e8f0" />
+                                        </radialGradient>
+                                    </defs>
+                                    {/* Shadow beneath */}
+                                    <ellipse cx="50" cy="63" rx="40" ry="4" fill="black" opacity="0.2" />
+                                    {/* Back legs */}
+                                    <path d="M8,42 Q3,56 9,63 L22,63 Q28,52 23,42 Z" fill="#cbd5e1" />
+                                    <path d="M72,42 Q67,56 73,63 L86,63 Q92,52 87,42 Z" fill="#cbd5e1" />
+                                    {/* Body */}
+                                    <ellipse cx="48" cy="32" rx="44" ry="26" fill="url(#bearFur)" />
+                                    {/* Belly lighter patch */}
+                                    <ellipse cx="48" cy="38" rx="26" ry="14" fill="#f8fafc" opacity="0.6" />
+                                    {/* Front legs */}
+                                    <path d="M14,42 Q9,56 15,63 L28,63 Q34,52 29,42 Z" fill="#e2e8f0" />
+                                    <path d="M66,42 Q61,56 67,63 L80,63 Q86,52 81,42 Z" fill="#e2e8f0" />
+                                    {/* Claws on front legs */}
+                                    <path d="M10,62 L14,65 M15,63 L18,66 M20,63 L22,66" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" />
+                                    <path d="M63,62 L66,65 M68,63 L71,66 M73,63 L75,66" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" />
                                     {/* Head */}
-                                    <circle cx="85" cy="20" r="12" fill="#f8fafc" />
+                                    <circle cx="83" cy="20" r="15" fill="url(#bearHead)" />
                                     {/* Ears */}
-                                    <circle cx="82" cy="10" r="4" fill="#f1f5f9" />
+                                    <circle cx="76" cy="8" r="6" fill="#e2e8f0" />
+                                    <circle cx="76" cy="8" r="3" fill="#fda4af" />
+                                    <circle cx="91" cy="7" r="5" fill="#e2e8f0" />
+                                    <circle cx="91" cy="7" r="2.5" fill="#fda4af" />
                                     {/* Snout */}
-                                    <ellipse cx="92" cy="22" rx="6" ry="4" fill="#cbd5e1" />
-                                    <circle cx="95" cy="20" r="2" fill="#1e293b" /> {/* Nose */}
-                                    {/* Eye */}
-                                    <circle cx="88" cy="18" r="2" fill="#ef4444" /> {/* Red Eye */}
+                                    <ellipse cx="93" cy="24" rx="7" ry="5" fill="#e2e8f0" />
+                                    <ellipse cx="94" cy="22" rx="3" ry="2" fill="#64748b" />
+                                    {/* Nostrils */}
+                                    <circle cx="92" cy="22" r="1" fill="black" />
+                                    <circle cx="96" cy="22" r="1" fill="black" />
+                                    {/* Eye - angry red glow */}
+                                    <circle cx="87" cy="17" r="3.5" fill="#1e293b" />
+                                    <circle cx="87" cy="17" r="2" fill="#ef4444" />
+                                    <circle cx="88" cy="16" r="0.8" fill="white" opacity="0.7" />
+                                    {/* Mouth line */}
+                                    <path d="M89,27 Q93,30 97,27" stroke="#475569" strokeWidth="1" fill="none" />
+                                    {/* Fur texture lines */}
+                                    <path d="M20,20 Q24,16 28,20" stroke="#cbd5e1" strokeWidth="1" fill="none" opacity="0.7" />
+                                    <path d="M30,15 Q34,11 38,15" stroke="#cbd5e1" strokeWidth="1" fill="none" opacity="0.6" />
+                                    <path d="M10,28 Q14,24 18,28" stroke="#cbd5e1" strokeWidth="1" fill="none" opacity="0.5" />
                                 </svg>
                             </div>
                         )}
                     </div>
                 ))}
 
-                {/* Boss (Level 5) */}
+                {/* Boss (Level 5) — Frost Dragon King */}
                 {boss.active && (
-                    <div className="absolute" style={{ left: boss.x, top: boss.y, width: 200, height: 180 }}>
+                    <div className="absolute" style={{ left: boss.x, top: boss.y, width: 220, height: 200 }}>
                         <div className="w-full h-full relative animate-float">
-                            {/* Giant Frost Owl Boss */}
-                            <svg width="100%" height="100%" viewBox="0 0 200 180" className="drop-shadow-[0_0_20px_rgba(59,130,246,0.6)]">
-                                {/* Wings (Animated via CSS classes ideally, but simple SVG here) */}
-                                <path d="M20,60 Q-20,20 20,0 Q60,20 50,60 Z" fill="#e0f2fe" className="animate-wing-left origin-right" />
-                                <path d="M180,60 Q220,20 180,0 Q140,20 150,60 Z" fill="#e0f2fe" className="animate-wing-right origin-left" />
+                            <svg width="100%" height="100%" viewBox="0 0 220 200" className="drop-shadow-[0_0_30px_rgba(99,102,241,0.8)]">
+                                <defs>
+                                    <radialGradient id="bossGlow" cx="50%" cy="40%" r="60%">
+                                        <stop offset="0%" stopColor="#c7d2fe" />
+                                        <stop offset="100%" stopColor="#312e81" />
+                                    </radialGradient>
+                                    <radialGradient id="bossEye" cx="30%" cy="30%" r="70%">
+                                        <stop offset="0%" stopColor="#a78bfa" />
+                                        <stop offset="60%" stopColor="#7c3aed" />
+                                        <stop offset="100%" stopColor="#1e1b4b" />
+                                    </radialGradient>
+                                    <filter id="iceGlow">
+                                        <feGaussianBlur stdDeviation="3" result="blur" />
+                                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                                    </filter>
+                                </defs>
+
+                                {/* Wing left — spread wide */}
+                                <path d="M50,80 Q0,30 10,5 Q40,10 60,50 Q70,65 65,80 Z" fill="#c7d2fe" stroke="#818cf8" strokeWidth="1.5" opacity="0.9" />
+                                {/* Wing right */}
+                                <path d="M170,80 Q220,30 210,5 Q180,10 160,50 Q150,65 155,80 Z" fill="#c7d2fe" stroke="#818cf8" strokeWidth="1.5" opacity="0.9" />
+                                {/* Wing membrane lines */}
+                                <path d="M52,78 Q25,40 15,10" stroke="#6366f1" strokeWidth="1" fill="none" opacity="0.5" />
+                                <path d="M58,76 Q40,45 25,15" stroke="#6366f1" strokeWidth="1" fill="none" opacity="0.5" />
+                                <path d="M168,78 Q195,40 205,10" stroke="#6366f1" strokeWidth="1" fill="none" opacity="0.5" />
+                                <path d="M162,76 Q180,45 195,15" stroke="#6366f1" strokeWidth="1" fill="none" opacity="0.5" />
+
+                                {/* Tail */}
+                                <path d="M100,180 Q60,200 40,190 Q70,175 80,165" fill="#818cf8" stroke="#6366f1" strokeWidth="1" />
+                                <path d="M120,180 Q160,200 180,190 Q150,175 140,165" fill="#818cf8" stroke="#6366f1" strokeWidth="1" />
 
                                 {/* Body */}
-                                <ellipse cx="100" cy="90" rx="70" ry="80" fill="#f8fafc" stroke="#bfdbfe" strokeWidth="4" />
-                                {/* Belly Feathers */}
-                                <path d="M60,100 Q100,140 140,100" fill="none" stroke="#bfdbfe" strokeWidth="2" opacity="0.5" />
-                                <path d="M70,120 Q100,150 130,120" fill="none" stroke="#bfdbfe" strokeWidth="2" opacity="0.5" />
+                                <ellipse cx="110" cy="115" rx="65" ry="70" fill="url(#bossGlow)" stroke="#818cf8" strokeWidth="3" />
+                                {/* Belly scales */}
+                                <ellipse cx="110" cy="130" rx="40" ry="45" fill="#e0e7ff" opacity="0.25" />
+                                <path d="M80,100 Q110,120 140,100" fill="none" stroke="#a5b4fc" strokeWidth="2" opacity="0.5" />
+                                <path d="M75,115 Q110,135 145,115" fill="none" stroke="#a5b4fc" strokeWidth="2" opacity="0.5" />
+                                <path d="M80,130 Q110,148 140,130" fill="none" stroke="#a5b4fc" strokeWidth="2" opacity="0.5" />
 
-                                {/* Head Tuft */}
-                                <path d="M70,30 L60,10 L80,30" fill="#f8fafc" />
-                                <path d="M130,30 L140,10 L120,30" fill="#f8fafc" />
+                                {/* Neck */}
+                                <path d="M75,65 Q110,55 145,65 L140,80 Q110,72 80,80 Z" fill="#4338ca" stroke="#6366f1" strokeWidth="1" />
 
-                                {/* Eyes (Glowing Blue) */}
-                                <circle cx="70" cy="60" r="15" fill="#1e293b" />
-                                <circle cx="70" cy="60" r="8" fill="#3b82f6" className="animate-pulse" /> {/* Pupil */}
-                                <circle cx="130" cy="60" r="15" fill="#1e293b" />
-                                <circle cx="130" cy="60" r="8" fill="#3b82f6" className="animate-pulse" />
+                                {/* Head */}
+                                <ellipse cx="110" cy="45" rx="42" ry="35" fill="#312e81" stroke="#6366f1" strokeWidth="2.5" />
+                                {/* Head scales / texture */}
+                                <path d="M80,35 Q95,28 110,35" fill="none" stroke="#4338ca" strokeWidth="1.5" />
+                                <path d="M110,35 Q125,28 140,35" fill="none" stroke="#4338ca" strokeWidth="1.5" />
 
-                                {/* Beak (Sharp Yellow) */}
-                                <path d="M90,75 L110,75 L100,95 Z" fill="#fbbf24" stroke="#d97706" strokeWidth="2" />
+                                {/* Horns */}
+                                <path d="M88,20 L78,0 L96,18" fill="#c7d2fe" stroke="#818cf8" strokeWidth="1" />
+                                <path d="M132,20 L142,0 L124,18" fill="#c7d2fe" stroke="#818cf8" strokeWidth="1" />
+                                {/* Horn glow tips */}
+                                <circle cx="78" cy="0" r="3" fill="#a5f3fc" opacity="0.9" />
+                                <circle cx="142" cy="0" r="3" fill="#a5f3fc" opacity="0.9" />
+
+                                {/* Left eye */}
+                                <circle cx="92" cy="42" r="13" fill="#1e1b4b" />
+                                <circle cx="92" cy="42" r="9" fill="url(#bossEye)" />
+                                <circle cx="92" cy="42" r="4" fill="#7c3aed" />
+                                <circle cx="89" cy="39" r="2.5" fill="white" opacity="0.5" />
+                                {/* Right eye */}
+                                <circle cx="128" cy="42" r="13" fill="#1e1b4b" />
+                                <circle cx="128" cy="42" r="9" fill="url(#bossEye)" />
+                                <circle cx="128" cy="42" r="4" fill="#7c3aed" />
+                                <circle cx="125" cy="39" r="2.5" fill="white" opacity="0.5" />
+
+                                {/* Jaw / Mouth */}
+                                <path d="M85,60 Q110,75 135,60" stroke="#4338ca" strokeWidth="2" fill="none" />
+                                {/* Teeth */}
+                                <path d="M90,60 L87,68 L93,60" fill="#e0e7ff" />
+                                <path d="M105,62 L103,70 L108,62" fill="#e0e7ff" />
+                                <path d="M120,62 L118,70 L123,62" fill="#e0e7ff" />
+                                <path d="M130,60 L128,68 L133,60" fill="#e0e7ff" />
+
+                                {/* Ice breath glow from mouth */}
+                                <ellipse cx="110" cy="68" rx="15" ry="6" fill="#a5f3fc" opacity="0.3" filter="url(#iceGlow)" />
+
+                                {/* Claws / feet */}
+                                <path d="M70,175 L60,188 M75,177 L68,192 M80,178 L76,193" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" />
+                                <path d="M150,175 L160,188 M145,177 L152,192 M140,178 L144,193" stroke="#818cf8" strokeWidth="2.5" strokeLinecap="round" />
                             </svg>
 
-                            {/* Ice Breath Particle Emitter Location (Visual Only) */}
-                            <div className="absolute top-[95px] left-[100px] w-2 h-2 bg-blue-400 blur-sm animate-ping"></div>
+                            {/* Mouth glow emitter */}
+                            <div className="absolute" style={{ top: 68, left: 100, width: 20, height: 8 }}>
+                                <div className="w-full h-full bg-cyan-300 blur-sm animate-pulse opacity-60"></div>
+                            </div>
 
                             {/* Health Bar */}
-                            <div className="absolute -top-12 left-0 w-full h-4 bg-gray-900 border-2 border-blue-400 rounded-full overflow-hidden shadow-lg">
-                                <div className="h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-200" style={{ width: `${boss.health}%` }}></div>
+                            <div className="absolute -top-14 left-0 w-full">
+                                <div className="text-center text-xs font-bold text-purple-300 mb-1 tracking-widest">FROST KING</div>
+                                <div className="h-4 bg-gray-900 border-2 border-purple-500 rounded-full overflow-hidden shadow-[0_0_10px_rgba(139,92,246,0.5)]">
+                                    <div className="h-full bg-gradient-to-r from-purple-700 via-indigo-500 to-cyan-400 transition-all duration-200" style={{ width: `${boss.health}%` }}></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1022,28 +1202,76 @@ export default function BikeGame({ stage, onStageComplete, onGameOver, onQuit, g
                 {/* Overlays */}
                 {/* Overlays moved to end of component */}
 
-                {/* Player Rendering: Bike Only */}
+                {/* Player Rendering: Bike + Rider */}
                 {bikes.map(bike => (
-                    <div key={bike.id} className="absolute w-14 h-14"
-                        style={{ left: bike.x - 28, top: bike.y - 35, transform: `rotate(${bike.rotation}rad)` }}>
-                        {/* Skis / Track */}
-                        <div className="absolute bottom-0 w-full h-4 bg-gray-800 rounded-full overflow-hidden">
-                            {/* Track tread animation */}
-                            <div className="w-[200%] h-full bg-[repeating-linear-gradient(90deg,#333,#333_5px,#555_5px,#555_10px)]"
-                                style={{ transform: `translateX(${-bike.x % 20}px)` }}></div>
-                        </div>
-                        {/* Body */}
-                        <div className="absolute bottom-3 left-2 w-10 h-6 bg-blue-600 skew-x-[-20deg] rounded-sm border border-blue-400"></div>
+                    <div key={bike.id} className="absolute"
+                        style={{ left: bike.x - 34, top: bike.y - 48, width: 68, height: 56, transform: `rotate(${bike.rotation}rad)` }}>
+                        <svg width="68" height="56" viewBox="0 0 68 56" overflow="visible">
+                            <defs>
+                                <linearGradient id="bikeBodyGrad" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#38bdf8" />
+                                    <stop offset="100%" stopColor="#0369a1" />
+                                </linearGradient>
+                                <linearGradient id="trackGrad" x1="0" y1="0" x2="1" y2="0">
+                                    <stop offset="0%" stopColor="#1e293b" />
+                                    <stop offset="50%" stopColor="#334155" />
+                                    <stop offset="100%" stopColor="#1e293b" />
+                                </linearGradient>
+                            </defs>
 
-                        {/* Thermal Core (Blue Box) */}
-                        <div className="absolute bottom-6 left-0 w-6 h-6 bg-cyan-400 border-2 border-white shadow-[0_0_15px_rgba(34,211,238,0.8)] animate-pulse z-10 flex items-center justify-center">
-                            <div className="w-2 h-2 bg-white rounded-full"></div>
-                        </div>
+                            {/* === SNOWMOBILE TRACK === */}
+                            <rect x="4" y="42" width="60" height="10" rx="5" fill="url(#trackGrad)" stroke="#475569" strokeWidth="1" />
+                            {/* Track tread marks */}
+                            {[0, 1, 2, 3, 4, 5].map(i => (
+                                <rect key={i}
+                                    x={6 + ((i * 10 + (bike.wheelRotation * 5 | 0)) % 56)}
+                                    y="43" width="4" height="8" rx="1"
+                                    fill="#475569" opacity="0.7" />
+                            ))}
 
-                        <div className="absolute bottom-6 left-6 w-8 h-8 bg-gray-900 rounded-full -z-10"></div> {/* User Head */}
-                        {/* Boost Flame */}
-                        {keysPressed.current['e'] && (
-                            <div className="absolute top-4 left-[-20px] w-8 h-4 bg-orange-500 rounded-full blur-md animate-pulse"></div>
+                            {/* === SNOWMOBILE BODY === */}
+                            {/* Ski/hull base */}
+                            <path d="M4,42 Q2,46 8,47 L60,47 Q66,46 64,42 Z" fill="#0f172a" />
+                            {/* Main body fairing */}
+                            <path d="M10,42 L10,26 Q12,18 22,16 L50,16 Q58,18 60,26 L60,42 Z" fill="url(#bikeBodyGrad)" stroke="#38bdf8" strokeWidth="1.5" />
+                            {/* Windshield */}
+                            <path d="M38,16 L34,24 L52,24 L54,16 Z" fill="#7dd3fc" opacity="0.5" stroke="#bae6fd" strokeWidth="1" />
+                            {/* Hood intake grilles */}
+                            <rect x="12" y="28" width="16" height="3" rx="1" fill="#1e40af" opacity="0.7" />
+                            <rect x="12" y="33" width="12" height="3" rx="1" fill="#1e40af" opacity="0.7" />
+                            {/* Side accent stripe */}
+                            <path d="M10,36 L60,36" stroke="#22d3ee" strokeWidth="1.5" opacity="0.6" />
+                            {/* Headlight */}
+                            <ellipse cx="61" cy="28" rx="4" ry="5" fill="#fef08a" stroke="#fbbf24" strokeWidth="1" />
+                            <ellipse cx="61" cy="28" rx="2" ry="3" fill="white" opacity="0.8" />
+                            {/* Exhaust pipe */}
+                            <rect x="6" y="34" width="6" height="5" rx="1" fill="#475569" />
+                            <ellipse cx="6" cy="34" rx="3" ry="2.5" fill="#64748b" />
+                            {/* Glowing thermal core indicator */}
+                            <circle cx="30" cy="30" r="4" fill="#22d3ee" stroke="white" strokeWidth="1"
+                                style={{ filter: 'drop-shadow(0 0 4px #22d3ee)' }} />
+                            <circle cx="30" cy="30" r="2" fill="white" />
+
+                            {/* === RIDER === */}
+                            {/* Rider body/suit */}
+                            <path d="M32,16 Q34,8 38,6 L42,6 Q46,8 46,16 Z" fill="#1d4ed8" stroke="#3b82f6" strokeWidth="1" />
+                            {/* Rider helmet */}
+                            <circle cx="39" cy="8" r="8" fill="#1e293b" stroke="#475569" strokeWidth="1.5" />
+                            {/* Visor */}
+                            <path d="M33,6 Q39,2 45,6 Q45,10 39,11 Q33,10 33,6 Z" fill="#f97316" opacity="0.85" />
+                            {/* Helmet ridge */}
+                            <path d="M31,8 Q39,4 47,8" stroke="#64748b" strokeWidth="1" fill="none" />
+                            {/* Rider arm holding handlebars */}
+                            <path d="M46,12 L54,20" stroke="#1d4ed8" strokeWidth="4" strokeLinecap="round" />
+                            <circle cx="54" cy="20" r="3" fill="#475569" /> {/* Handlebar grip */}
+                        </svg>
+
+                        {/* Boost Exhaust Flame */}
+                        {(keysPressed.current['e'] || touchInputs.current.boost) && (
+                            <div className="absolute" style={{ left: -18, top: 28, width: 20, height: 10 }}>
+                                <div className="w-full h-full bg-gradient-to-l from-orange-500 via-yellow-400 to-transparent rounded-full blur-sm animate-pulse"></div>
+                                <div className="absolute inset-0 w-3/4 h-full bg-white/40 rounded-full blur-sm"></div>
+                            </div>
                         )}
                     </div>
                 ))}

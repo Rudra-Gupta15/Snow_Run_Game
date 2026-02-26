@@ -62,17 +62,17 @@ const MobileControls = ({ onAction }) => {
     }, []);
 
     return (
-        <div className="absolute inset-0 pointer-events-none z-[100] flex items-end justify-between p-8 md:hidden">
+        <div className="absolute inset-0 pointer-events-none z-[100] flex items-end justify-between p-4 md:hidden">
             {/* Left: Joystick */}
             <div
                 ref={containerRef}
-                className="w-32 h-32 rounded-full bg-white/5 backdrop-blur-md border border-white/10 relative pointer-events-auto touch-none shadow-2xl overflow-visible"
+                className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-white/5 backdrop-blur-md border border-white/10 relative pointer-events-auto touch-none shadow-2xl overflow-visible"
                 onTouchStart={handleStart}
                 onMouseDown={handleStart}
             >
                 <div
                     ref={joystickRef}
-                    className="absolute w-12 h-12 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-full shadow-[0_0_20px_rgba(34,211,238,0.5)] transform -translate-x-1/2 -translate-y-1/2 transition-transform duration-75 pointer-events-none"
+                    className="absolute w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-full shadow-[0_0_20px_rgba(34,211,238,0.5)] transform -translate-x-1/2 -translate-y-1/2 transition-transform duration-75 pointer-events-none"
                     style={{
                         left: `calc(50% + ${joystickPos.x}px)`,
                         top: `calc(50% + ${joystickPos.y}px)`
@@ -83,27 +83,27 @@ const MobileControls = ({ onAction }) => {
             </div>
 
             {/* Right: Actions */}
-            <div className="flex gap-6 items-end pointer-events-auto">
+            <div className="flex gap-4 items-end pointer-events-auto">
                 {/* Boost Button */}
                 <button
-                    className="w-20 h-20 rounded-full bg-white/5 backdrop-blur-md border border-white/10 flex items-center justify-center active:scale-90 active:bg-cyan-500/20 transition-all shadow-xl group"
+                    className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white/5 backdrop-blur-md border border-white/10 flex items-center justify-center active:scale-90 active:bg-cyan-500/20 transition-all shadow-xl group"
                     onTouchStart={() => onAction('boost', true)}
                     onTouchEnd={() => onAction('boost', false)}
                     onMouseDown={() => onAction('boost', true)}
                     onMouseUp={() => onAction('boost', false)}
                 >
-                    <Zap className="w-8 h-8 text-cyan-400 group-active:text-white transition-colors" />
+                    <Zap className="w-6 h-6 md:w-8 md:h-8 text-cyan-400 group-active:text-white transition-colors" />
                 </button>
 
                 {/* Jump Button */}
                 <button
-                    className="w-24 h-24 rounded-full bg-white/10 backdrop-blur-lg border border-white/20 flex items-center justify-center active:scale-90 active:bg-blue-500/40 transition-all shadow-2xl group"
+                    className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-white/10 backdrop-blur-lg border border-white/20 flex items-center justify-center active:scale-90 active:bg-blue-500/40 transition-all shadow-2xl group"
                     onTouchStart={() => onAction('jump', true)}
                     onTouchEnd={() => onAction('jump', false)}
                     onMouseDown={() => onAction('jump', true)}
                     onMouseUp={() => onAction('jump', false)}
                 >
-                    <ArrowUp className="w-10 h-10 text-white group-active:scale-125 transition-transform" />
+                    <ArrowUp className="w-8 h-8 md:w-10 md:h-10 text-white group-active:scale-125 transition-transform" />
                 </button>
             </div>
         </div>

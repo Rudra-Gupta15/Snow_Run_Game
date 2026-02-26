@@ -3,7 +3,7 @@ import React from 'react';
 const QuitOverlay = ({ onConfirm, onCancel }) => {
     return (
         <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md animate-fade-in">
-            <div className="w-full max-w-sm p-8 bg-red-950/40 rounded-2xl border border-red-500/30 text-center shadow-[0_0_50px_rgba(255,0,0,0.1)]">
+            <div className="w-full max-w-sm mx-4 p-6 md:p-8 bg-red-950/40 rounded-2xl border border-red-500/30 text-center shadow-[0_0_50px_rgba(255,0,0,0.1)]">
                 <h2 className="text-2xl font-black text-white mb-2 tracking-wider">ABORT MISSION?</h2>
                 <p className="text-red-200/70 mb-8 font-mono text-sm">Are you sure you want to quit?</p>
 
